@@ -1,0 +1,15 @@
+# ── Core dependencies ────────────────────────────────────────────────────────
+opencv-python>=4.8.0       # Image processing and colour operations
+numpy>=1.24.0              # Vectorised array math (all pixel operations)
+mss>=9.0.1                 # Fast real-time screen capture
+Pillow>=10.0.0             # Asset loading (textures, LUT images)
+keyboard>=0.13.5           # Global hotkeys (works without window focus)
+PySide6>=6.6.0             # Qt for Python — fullscreen overlay window
+
+# ── Future / optional extensions ─────────────────────────────────────────────
+# Uncomment when adding advanced features:
+#
+# scipy>=1.11.0            # Advanced signal/image processing (convolution, filters)
+# mediapipe>=0.10.0        # AI perception: face detection, pose estimation, segmentation
+# onnxruntime>=1.16.0      # Run ONNX models (MiDaS depth, YOLO, etc.) at inference time
+# cupy-cuda12x>=12.0.0     # GPU-accelerated NumPy replacement (NVIDIA CUDA 12.x)
