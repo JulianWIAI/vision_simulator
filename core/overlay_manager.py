@@ -114,25 +114,60 @@ class OverlayManager(QObject):
 
         Must be called from the GUI thread (creates a QWidget).
 
+        ── Phase 6 patch ──────────────────────────────────────────────────────
+        When split-screen is active the composed frame renders into snapshot[0].
+        A newly added overlay would be placed on top (later-created windows sit
+        higher in the Win32 z-order for WS_EX_TOPMOST windows) and would cover
+        the composed split-screen frame with a stale or blank layer.  We hide
+        the new overlay immediately when split-screen is active so it does not
+        interfere; it becomes visible again when sync_split_screen_windows() is
+        called after the user disables split-screen.
+
         Args:
             mode_index: Index into self._modes for the initial vision mode.
         """
-        mode_index = mode_index % len(self._modes)
-        overlay_id = self._next_id
-        self._next_id += 1
+        # Clamp the requested mode index so it never exceeds the mode list length.
+        mode_index = mode_index % len(self._modes)  # safe wrap-around
 
+        # Assign a unique integer ID and immediately advance the counter so the
+        # next overlay gets a different ID even if this one is removed quickly.
+        overlay_id = self._next_id                   # capture current counter value
+        self._next_id += 1                           # increment for the next overlay
+
+        # Construct the OverlayWindow.  The widget is created but not yet shown.
+        # _setup_window() inside OverlayWindow.__init__ sets the Qt flags and
+        # an initial geometry; showEvent() will refine the geometry at display time.
         overlay = OverlayWindow(
             overlay_id=overlay_id,
-            mode=self._modes[mode_index],
-            mode_index=mode_index,
-            all_modes=self._modes,
+            mode=self._modes[mode_index],            # look up the requested base mode
+            mode_index=mode_index,                   # numeric index for HUD display
+            all_modes=self._modes,                   # shared reference; never mutated
         )
-        overlay.show()
 
+        # ── Split-screen visibility guard ──────────────────────────────────
+        # If split-screen is currently active, hide this new overlay immediately
+        # after creation so it does not occlude the composed split-screen frame.
+        # The overlay is still registered in _overlays so that when split-screen
+        # is disabled, sync_split_screen_windows() can restore it.
+        if self._split_screen.is_active:
+            # Do NOT call show() — the overlay must remain invisible while
+            # the primary overlay (snapshot[0]) is rendering the split frame.
+            pass                                     # stay hidden during split-screen
+        else:
+            # Normal path: show the overlay immediately so it renders live frames.
+            overlay.show()                           # make visible — triggers showEvent()
+
+        # Append to the shared list under lock so distribute() (worker thread)
+        # sees a consistent snapshot.  The lock is held for the minimal time.
         with self._lock:
-            self._overlays.append(overlay)
+            self._overlays.append(overlay)           # register in the managed list
 
-        self.overlays_changed.emit()
+        # Notify the ControlPanel's Regions view that the list changed.
+        # This signal is emitted from the GUI thread (we are in a slot or timer
+        # callback), so it is safe to connect to GUI-thread slots directly.
+        self.overlays_changed.emit()                 # signal → ControlPanel._populate_regions_list
+
+        # Console feedback for development / debugging.
         print(f"  + Overlay {overlay_id + 1}: {self._modes[mode_index].name}")
 
     def remove_last(self) -> None:
@@ -197,6 +232,63 @@ class OverlayManager(QObject):
             snapshot = list(self._overlays)
         for overlay in snapshot:
             overlay.show()
+
+    def sync_split_screen_windows(self) -> None:
+        """
+        Reconciles overlay visibility with the current split-screen state.
+
+        ── Why this method exists ──────────────────────────────────────────────
+        Win32 assigns z-order by creation sequence for WS_EX_TOPMOST windows:
+        the overlay created last sits highest on screen.  When split-screen is
+        active, distribute() composes all panels into one frame and delivers it
+        to snapshot[0] (the first / lowest overlay).  If snapshot[1] or higher
+        overlays remain visible they paint stale single-mode frames on top of the
+        composed result, making the split-screen appear to show only one panel.
+
+        ── What this method does ───────────────────────────────────────────────
+        Split-screen active:
+          • snapshot[0].show()  — primary surface must remain visible so the
+                                  worker can call submit_frame() and trigger
+                                  Qt.paintEvent on it.
+          • snapshot[1:].hide() — all higher-z overlays are hidden so they
+                                  cannot occlude the composed frame below them.
+
+        Split-screen inactive (disabled or "none"):
+          • All overlays are shown so each renders its individual vision mode.
+
+        ── When to call it ─────────────────────────────────────────────────────
+        Call immediately after writing ss.layout_mode in _on_apply_split_screen()
+        so the visibility change takes effect on the very next frame cycle.
+
+        Must be called from the GUI thread (hide()/show() are Qt GUI operations).
+        """
+        # Take a GIL-safe snapshot of the overlay list so we are not holding
+        # _lock while calling hide()/show() — those are Qt GUI calls and must
+        # not run while the worker thread is inside distribute().
+        with self._lock:
+            snapshot = list(self._overlays)  # shallow copy; safe cross-thread read
+
+        # Nothing to do if there are no managed overlays.
+        if not snapshot:
+            return
+
+        if self._split_screen.is_active:
+            # ── Split-screen is active ──────────────────────────────────────
+            # The primary overlay (index 0) carries the composed frame; it must
+            # be visible so its Qt.paintEvent fires and the image reaches the screen.
+            snapshot[0].show()                  # primary surface — must be visible
+
+            # All overlays at index 1 and above have a higher Win32 z-order than
+            # snapshot[0].  Hiding them removes their stale single-mode windows
+            # from the screen so only the composed split frame is visible.
+            for extra_overlay in snapshot[1:]:  # iterate every secondary overlay
+                extra_overlay.hide()            # remove from screen — does not destroy
+        else:
+            # ── Split-screen is inactive ────────────────────────────────────
+            # Restore every overlay to its normal visible state so each one
+            # independently renders and displays its own vision-mode frame.
+            for overlay in snapshot:            # every managed overlay
+                overlay.show()                  # make visible — triggers showEvent()
 
     def count(self) -> int:
         """Returns the number of currently active overlays."""

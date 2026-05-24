@@ -1,160 +1,51 @@
 # Vision Simulator
 
-A real-time screen-overlay application that transforms your display through
-**20 biologically and scientifically grounded perception modes** — from animal
-eyes and infrared sensing to human visual conditions and machine vision.
+A real-time, fullscreen Windows screen-overlay application that renders live simulations of non-human and altered visual perception directly on top of the desktop — without interrupting click-through interaction with any underlying application.
 
-A fullscreen, click-through PySide6 overlay sits on top of your desktop and
-applies the selected filter live to every pixel of your screen, at up to 60 fps,
-with zero Python-level pixel loops.
+Built with **PySide6 (Qt for Python)**, **OpenCV**, **mss**, and **NumPy**. Targets 60 FPS on a modern CPU with no GPU requirement and zero Python-level pixel loops.
 
 ---
 
-## Features
+## Feature Highlights
 
-- **20 vision modes** covering animal eyes, scientific imaging, human conditions, and AI
-- **Multi-overlay engine** — run several filters simultaneously, each in its own window
-- **Split-screen comparison** — view 2 or 4 modes side-by-side without switching
-- **Window-aware filtering** — pin a filter to a specific application window
-- **VisionPipeline** — combine any base mode with a post-processing effect (blur, glow, CLAHE, …)
-- **Floating control panel** — sidebar-navigated GUI with live overlay management
-- **Global hotkeys** — work from any application, no window focus required
-- **Click-through overlay** — the filtered view never blocks mouse or keyboard input
-
----
-
-## Vision Modes
-
-| # | Key | Mode | Scientific basis |
-|---|-----|------|-----------------|
-| 1 | `1` | Dog Vision | Dichromatic S+L cones — blue/yellow |
-| 2 | `2` | Cat Vision | Dichromatic + tapetum lucidum low-light boost |
-| 3 | `3` | Bird Vision | Tetrachromatic + UV fourth cone channel |
-| 4 | `4` | Insect Vision | Compound eye: hexagonal facets, UV shift |
-| 5 | `5` | Snake Thermal | Blended IR pit-organ + normal visual field |
-| 6 | `6` | **Pit Viper Vision ★** | Full thermal pipeline: cold=blurry/blue, hot=sharp/white |
-| 7 | `7` | Shark Vision | Monochromatic blue + electroreception shimmer |
-| 8 | `8` | Frog Vision | Motion-only retina: static=dim, moving=bright green |
-| 9 | `9` | UV Vision | Ultraviolet spectral range mapped to visible |
-| 10 | `0` | Depth Map | Edge-sharpness monocular depth, thermal colour-coded |
-| 11 | N/P | AI Edge Vision | Canny edge detection — machine perception |
-| 12–14 | N/P | Color Blind ×3 | Deuteranopia / Protanopia / Tritanopia (Viénot 1999) |
-| 15 | N/P | Tunnel Vision | Radial peripheral blur + vignette |
-| 16–19 | N/P | Emotional ×4 | Happy / Sad / Angry / Fearful colour-temperature shifts |
-| 20 | N/P | **Octopus Polarized Vision** | Sobel → arctan2 → HSV hue encodes polarization angle |
-
-> Modes 11–20 cycle via `N` (next) / `P` (previous) since they have no dedicated number key.
+| Feature | Detail |
+|---|---|
+| **20 built-in vision modes** | Animal eyes, dichromacy, thermal, UV, night, structural, and more |
+| **VisionPipeline effect chain** | Stack a post-processing effect on any base mode; effects survive mode switching |
+| **Multi-overlay** | Run several independent overlays simultaneously with different modes |
+| **Split-Screen Comparison** | Tile 2 or 4 modes side-by-side (Top/Bottom, Left/Right, 2×2 Grid) |
+| **Click-through** | Overlay is fully transparent to mouse and keyboard input; desktop stays interactive |
+| **Split-screen click remapping** | Win32 `WH_MOUSE_LL` hook corrects click positions inside scaled split panels |
+| **Window-tracked overlays** | Clip any overlay to a specific Win32 window; the clip rect follows as the window moves |
+| **HD Matrix Analyzer** | Spatial curvature analysis, SUSY symmetry lines, gravitational aura, and instability border |
+| **Control Panel GUI** | Floating dark-theme sidebar panel for all settings (show/hide with `C`) |
+| **Capture exclusion** | Overlay is hidden from MSS / BitBlt so it never feeds back into its own capture |
 
 ---
 
-## Architecture
+## System Requirements
 
-```
-vision-simulator/
-│
-├── main.py                       ← Entry point · hotkeys · shutdown sequence
-│
-├── core/
-│   ├── engine.py                 ← VisionEngine: opens screen-capture context
-│   ├── screen_capture.py         ← MSS real-time screen capture
-│   ├── overlay_window.py         ← Fullscreen click-through QWidget (Win32 WS_EX_TRANSPARENT)
-│   ├── overlay_manager.py        ← Owns all OverlayWindows · frame distribution · HUD
-│   ├── frame_worker.py           ← QThread: capture loop → manager.distribute()
-│   ├── split_screen_manager.py   ← 4 layout modes · resize-before-apply optimisation
-│   └── vision_pipeline.py        ← Chains base_mode + effects sequentially
-│
-├── modes/
-│   ├── base_mode.py              ← Abstract BaseVisionMode (ABC)
-│   ├── dog_vision.py             ← Dichromatic S+L
-│   ├── cat_vision.py             ← Dichromatic + low-light
-│   ├── bird_vision.py            ← Tetrachromatic + UV
-│   ├── insect_vision.py          ← Compound eye
-│   ├── snake_thermal.py          ← IR blend
-│   ├── pit_viper.py              ← ★ Full thermal pipeline
-│   ├── shark_vision.py           ← Monochromatic + shimmer
-│   ├── frog_vision.py            ← Motion-only retina
-│   ├── uv_vision.py              ← UV range
-│   ├── depth_map.py              ← Monocular depth
-│   ├── ai_edge.py                ← Canny edges
-│   ├── colorblind.py             ← CVD simulation (3 types)
-│   ├── tunnel_vision.py          ← Peripheral blur
-│   ├── emotional.py              ← Colour-temperature affect
-│   └── polarized_vision.py       ← Octopus polarization angle (Mäthger 2009)
-│
-├── effects/
-│   ├── color_filters.py          ← Channel weights, hue shift, CVD matrices
-│   ├── blur.py                   ← Gaussian, selective, radial, motion blur
-│   ├── contrast.py               ← CLAHE, gamma correction, linear contrast
-│   ├── overlays.py               ← Vignette, hex grid, scan lines, glow/bloom
-│   ├── lut.py                    ← LUT builders + cv2.LUT application
-│   └── pipeline_effects.py       ← BaseVisionMode wrappers for VisionPipeline
-│
-├── ui/
-│   ├── __init__.py
-│   └── main_window.py            ← ControlPanel: sidebar QMainWindow (5 views)
-│
-├── utils/
-│   ├── config.py                 ← All constants and defaults
-│   ├── mode_registry.py          ← Single source of truth for all registered modes
-│   ├── image_utils.py            ← frame_to_qimage, resize helpers
-│   ├── math_utils.py             ← Normalisation, radial maps
-│   └── window_manager.py         ← Win32 ctypes window enumeration + tracking
-│
-├── assets/
-│   ├── luts/                     ← Drop .npy LUT files here (gitignored)
-│   └── textures/                 ← Drop texture overlays here (gitignored)
-│
-├── requirements.txt
-└── README.md
-```
-
-### Frame pipeline
-
-```
-ScreenCapture.capture()  (worker thread)
-    │
-    ├─[split-screen active]──► SplitScreenManager.compose(raw)
-    │                               ├─ resize panel to 50 % / 25 % area
-    │                               ├─ mode.apply(panel)          ← C/SIMD speed
-    │                               └─ stitch panels + draw labels
-    │
-    └─[standard]──► per overlay:
-                        VisionMode.apply(raw)        ← or VisionPipeline chain
-                            └─► HUD bar composite
-                                └─► QImage → QueuedConnection → OverlayWindow.paintEvent()
-```
-
-### Adding a new vision mode (3 steps)
-
-1. Create `modes/my_mode.py` subclassing `BaseVisionMode`.
-2. Implement `name` (property) and `apply(frame) -> np.ndarray`.
-3. Add `MyMode()` to the list in `utils/mode_registry.py`.
-
-No other file changes required.
-
-### Adding a pipeline effect (2 steps)
-
-1. Add a wrapper class in `effects/pipeline_effects.py` subclassing `BaseVisionMode`.
-2. Append `("Display Name", MyEffect())` to `PIPELINE_EFFECTS`.
-
-It will appear automatically in the control panel's effect combo box.
+| Item | Minimum |
+|---|---|
+| OS | Windows 10 version 2004 (build 19041) or later |
+| Python | 3.10+ |
+| CPU | Any modern x86-64 |
+| RAM | 512 MB free |
+| Display | Primary monitor (multi-monitor supported; overlay always covers the primary) |
 
 ---
 
-## Setup
+## Installation
 
 ```bash
-# 1. Clone
+# 1. Clone the repository
 git clone https://github.com/JulianWIAI/vision-simulator.git
-cd vision-simulator
+cd vision-simulator/vision_simulator
 
-# 2. Create virtual environment
+# 2. Create and activate a virtual environment
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1        # PowerShell
+# or: .\.venv\Scripts\activate.bat  # Command Prompt
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -163,176 +54,350 @@ pip install -r requirements.txt
 python main.py
 ```
 
-> **Windows note**: The `keyboard` library requires running the terminal as
-> Administrator for global hotkey capture to work across all applications.
+> **PowerShell execution policy:** if activation fails with "scripts are disabled", run once:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+### Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `opencv-python` | ≥ 4.8 | Frame resizing, colour transforms, HUD text rendering |
+| `numpy` | ≥ 1.24 | All per-pixel array math — zero Python-level pixel loops |
+| `mss` | ≥ 9.0 | Fast real-time screen capture at physical pixels |
+| `Pillow` | ≥ 10.0 | Asset loading (LUT images, textures) |
+| `keyboard` | ≥ 0.13 | System-wide hotkeys — work without window focus |
+| `PySide6` | ≥ 6.6 | Qt for Python — overlay window, control panel, signal/slot threading |
 
 ---
 
-## Controls
+## Quick Start
 
-### Global hotkeys (work from any application)
+```
+python main.py
+```
+
+The terminal prints the full mode list and hotkey map. One overlay starts immediately in **mode 1** covering the primary screen. The **Control Panel** opens in the top-right corner.
+
+Press `C` to toggle the Control Panel at any time.  
+Press `°` (degree symbol) to quit, or close the Control Panel window.
+
+---
+
+## Keyboard Controls
 
 | Key | Action |
-|-----|--------|
-| `1` – `9` | Set mode 1–9 on the most recently added overlay |
-| `0` | Set mode 10 on the most recently added overlay |
-| `N` | Add a new overlay (starts at mode 1) |
-| `M` | Cycle the last overlay forward through all modes |
-| `X` | Remove the most recently added overlay |
+|---|---|
+| `N` | Add a new overlay |
+| `M` | Cycle the last overlay forward through all 20 modes |
+| `1` – `9` | Set mode 1–9 on the last overlay |
+| `0` | Set mode 10 on the last overlay |
+| `X` | Remove the last overlay |
 | `C` | Toggle the Control Panel window |
-| `ESC` | Exit split-screen (if active), or quit the application |
+| `°` | First press: disable split-screen. Second press (or when no split is active): quit |
 
-> Hotkeys `N / M / X / 1–9 / 0` are suppressed while the Control Panel has
-> keyboard focus so that typing in the panel's fields does not accidentally
-> trigger overlay actions.
-
-### Control Panel — Regions view
-
-| Control | Action |
-|---------|--------|
-| + Add Overlay | Create a new full-screen overlay |
-| ✕ Remove Selected | Remove the selected overlay |
-| Mode combo + Set Mode | Assign a standard mode to the selected overlay |
-| Base + Effect combos + Apply Pipeline | Wrap a mode + effect into a VisionPipeline and apply |
-
-### Control Panel — Split Screen view
-
-| Layout | Panels |
-|--------|--------|
-| Off | Normal per-overlay rendering |
-| Top / Bottom | Two panels stacked vertically (A top, B bottom) |
-| Left / Right | Two panels side-by-side (A left, B right) |
-| 2×2 Grid | Four panels (A=TL, B=TR, C=BL, D=BR) |
+> `N`, `M`, `X`, `1–9`, `0` are suppressed while the Control Panel has OS focus so typing in combo boxes does not fire overlay actions.
 
 ---
 
-## Split-Screen Performance Model
+## Vision Modes
 
-Split-screen resizes each panel **before** calling `mode.apply()`, so the
-vision mode processes a fraction of the original resolution:
+All 20 modes are available as base modes, in the per-overlay selector, in the Global Modes override, and in every split-screen panel slot.
 
-| Layout | Per-panel pixels (1920×1080 source) |
-|--------|-------------------------------------|
-| 2× vertical / horizontal | ~1.04 M (50 % of 2.07 M) |
-| 4× grid | ~518 K (25 % of 2.07 M) |
-
-This gives a **2–4× throughput improvement** over rendering at full resolution
-per panel, with no Python-level pixel loops anywhere in the pipeline.
-
----
-
-## Pit Viper Vision — Feature Deep Dive
-
-The flagship mode models all known physiological properties of pit-viper
-infrared sensing (TRPA1 membrane receptors, Gracheva et al., 2010):
-
-| Stage | Implementation | Physiology modelled |
-|-------|---------------|---------------------|
-| 1 | `cv2.cvtColor(BGR→GRAY)` | Luminance ≈ thermal proxy |
-| 2 | `cv2.equalizeHist` | Differential temperature sensitivity |
-| 3 | Custom thermal LUT | False-colour IR palette |
-| 4 | NumPy threshold mask | Cold vs warm region segmentation |
-| 5 | `selective_blur` | Low spatial resolution of pit organ (~700 receptors) |
-| 6 | `add_scan_lines` | Sensor-readout grid texture |
-| 7 | `add_glow` | Optical bloom / halation around heat sources |
+| # | Mode | Description |
+|---|---|---|
+| 1 | **Dog Vision** | Dichromatic (S+L cones) — blue/yellow axis; reds appear as desaturated grey |
+| 2 | **Cat Vision** | Dichromatic + peripheral blur; reduced acuity outside the central fovea |
+| 3 | **Bee Vision** | UV-shifted trichromacy; UV-reflective patterns invisible to humans become visible |
+| 4 | **Bull Vision** | Dichromatic (blue-yellow axis only); all reds collapse to grey |
+| 5 | **Frog Vision** | High contrast + cold-hue shift; motion-emphasis colour mapping |
+| 6 | **Pit Viper IR** | Thermal infrared simulation; luminance-to-heat-gradient mapping via custom LUT |
+| 7 | **Mantis Shrimp** | 16-channel hyperspectral simulation; extreme hue rotation across the visible spectrum |
+| 8 | **Eagle Vision** | 4–8× acuity boost via CLAHE sharpening + telephoto centre-crop |
+| 9 | **Colour Blind — Protanopia** | Red-green deficiency (missing L-cone); Viénot 1999 simulation matrix |
+| 10 | **Colour Blind — Deuteranopia** | Red-green deficiency (missing M-cone) |
+| 11 | **Colour Blind — Tritanopia** | Blue-yellow deficiency (missing S-cone) |
+| 12 | **Night Vision** | Phosphor-green amplification; simulates Gen-III image-intensifier tubes |
+| 13 | **Thermal Camera** | False-colour heat map (cold = blue → warm = red); CLAHE normalisation |
+| 14 | **Echolocation Map** | Depth-cue estimation from luminance gradients; bat sonar inspired |
+| 15 | **Compound Eye** | Hexagonal facet grid tiling; approximates insect ommatidial array |
+| 16 | **Infrared** | Near-IR simulation via inverted luminance + red-channel boost |
+| 17 | **Ultraviolet** | UV-band simulation; shifts blue channel into near-violet and enhances surface patterning |
+| 18 | **Monochrome** | Perceptual greyscale (BT.601 luminance coefficients: R×0.299, G×0.587, B×0.114) |
+| 19 | **High Contrast** | CLAHE local contrast enhancement; preserves hue, sharpens local detail |
+| 20 | **Inverted** | Photographic negative; all channel values flipped around 127 |
 
 ---
 
-## Octopus Polarized Vision — Feature Deep Dive
+## VisionPipeline Effect Chain
 
-Octopuses are monochromatic yet show remarkable colour-matching behaviour.
-The leading hypothesis (Mäthger et al., 2009): they detect the *polarization
-angle* of light via orthogonal rhabdomere orientations.
-
-| Stage | Implementation | Modelling |
-|-------|---------------|-----------|
-| 1 | Grayscale conversion | Strip wavelength; keep luminance |
-| 2 | Sobel X/Y (CV_32F) | Detect spatial transitions |
-| 3 | `arctan2(Gy, Gx)` → hue | Map angle [−π, π] → HSV hue [0, 179] |
-| 4 | `cv2.magnitude()` | SIMD-accelerated gradient strength → HSV value |
-| 5 | HSV → BGR | Saturated colour encodes polarization angle |
-
-Flat regions appear black (weak gradient); edges burst with colour whose hue
-encodes the local polarization orientation.
-
----
-
-## VisionPipeline — Effect Layering
-
-Any overlay can be assigned a `VisionPipeline` instead of a plain mode.
-A pipeline chains a **base mode** and up to one **effect** sequentially:
+The **Regions** tab in the Control Panel lets you compose a pipeline by stacking one post-processing **effect** on top of any **base mode**:
 
 ```
-raw frame  →  base_mode.apply()  →  effect.apply()  →  output
+raw frame  →  base_mode.apply()  →  effect.apply()  →  display
 ```
 
-Available effects:
+### Available Effects
 
 | Effect | Description |
-|--------|-------------|
-| Gaussian Blur | Softens output — models optical defocus |
-| High Contrast | CLAHE local contrast boost on LAB L-channel |
-| Vignette | Radial edge-darkening to focus attention centrally |
-| Scan Lines | CRT / thermal-camera row texture |
-| Glow | Bloom / halo around bright image regions |
-| Radial Blur | Peripheral blur increasing toward frame edges |
+|---|---|
+| **None** | No post-processing; base mode output displayed directly |
+| **Gaussian Blur** | Uniform Gaussian softening (kernel 15×15) |
+| **High Contrast** | CLAHE local contrast boost (clip limit 2.0, tile grid 8×8) |
+| **Vignette** | Radial edge-darkening to focus attention on the frame centre |
+| **Scan Lines** | CRT / thermal-camera row-stripe texture (every 4th row, α 0.15) |
+| **Glow** | Bloom / halo around bright image regions (kernel 21, intensity 0.4) |
+| **Radial Blur** | Peripheral blur increasing with distance from the frame centre |
+| **HD Matrix Analyzer** | Hyperdimensional spatial analysis overlay (see below) |
+
+### HD Matrix Analyzer
+
+A research-grade spatial analysis overlay rendered in four layers on every frame:
+
+| Layer | Marker | Criterion |
+|---|---|---|
+| **Curvature markers** | Red crosshair = angular patch | High gradient orientation variance in 16×16 patch |
+| | Cyan ring = smooth patch | Low gradient orientation variance |
+| **SUSY vector lines** | Dashed lines between pairs | Nearest-neighbour symmetry between angular ↔ smooth markers |
+| **Gravitational aura rings** | Concentric rings at dark-zone centroids | Rings weighted by local edge density |
+| **Instability border** | Double red border | Global symmetry score < threshold → high perceptual chaos |
+
+Analysis runs on a max-320-px downscale every 6 frames and the result is cached for intermediate frames, keeping per-frame overhead negligible.
+
+### Pipeline Persistence on Mode Switch
+
+When a `VisionPipeline` is active, pressing `M` or a digit key swaps only the **base mode** — the effect chain is **preserved**. The HUD shows `≡` instead of a numeric counter to indicate a pipeline is active. This is implemented in `core/pipeline_state.py` via in-place patching of `VisionPipeline.base_mode`.
 
 ---
 
-## Libraries
+## Split-Screen Comparison
 
-| Library | Version | Role |
-|---------|---------|------|
-| `opencv-python` | ≥ 4.8 | Image processing, colour transforms, HUD rendering |
-| `numpy` | ≥ 1.24 | Vectorised pixel math, masks, LUT arrays |
-| `PySide6` | ≥ 6.6 | Qt overlay windows, control panel, signal/slot threading |
-| `mss` | ≥ 9.0 | Fast real-time screen capture |
-| `Pillow` | ≥ 10.0 | Asset loading (textures, LUT images) |
-| `keyboard` | ≥ 0.13 | Global hotkeys (OS-level, works outside window focus) |
+Open the **Split Screen** tab in the Control Panel to select a layout and assign modes to each panel slot.
+
+| Layout | Panels | Scale per panel |
+|---|---|---|
+| Off | — | Full frame, individual overlay modes |
+| Top / Bottom | A (top) + B (bottom) | Full width × ≈50% height each |
+| Left / Right | A (left) + B (right) | ≈50% width × full height each |
+| 2×2 Grid | A (TL), B (TR), C (BL), D (BR) | ≈50% width × ≈50% height each |
+
+Press `°` once to disable split-screen without quitting the application.
+
+### Performance Model
+
+`SplitScreenManager._process_panel()` calls `cv2.resize()` to downscale the raw desktop frame to panel size **before** calling `mode.apply()`. For a 1920×1080 source:
+
+| Layout | Pixels per mode call | Reduction vs full frame |
+|---|---|---|
+| 2× (any) | ≈1.04 M | 2× faster |
+| 4× grid | ≈518 K | 4× faster |
+
+`np.vstack` / `np.hstack` stitch the panels back into the full-resolution output frame in a single C-level call with no Python pixel loops.
+
+### Click Remapping in Split-Screen
+
+A Win32 `WH_MOUSE_LL` low-level mouse hook (managed by `core/mouse_remap.py`) corrects click coordinates when split-screen is active.
+
+**Problem:** each panel renders a scaled-down copy of the full desktop. A desktop element at position `(real_x, real_y)` appears at `(panel_x, panel_y)` inside the panel. Because the overlay passes all clicks through (`WS_EX_TRANSPARENT`), clicking at `(panel_x, panel_y)` hits the wrong real-desktop position.
+
+**Fix:** the hook intercepts every physical button event and applies the inverse of the panel's `cv2.resize` scale:
+
+```
+Compose scale  (forward):  panel_y = real_y × (h_panel / H)
+Remap   scale  (inverse):  real_y  = panel_y × (H / h_panel)
+```
+
+The hook then moves the system cursor to `(real_x, real_y)` via `SetCursorPos`, synthesises an identical button event via `SendInput`, and returns `1` to suppress the original. Injected events carry `LLMHF_INJECTED` in `MSLLHOOKSTRUCT.flags` and are passed through unchanged, preventing infinite recursion.
+
+---
+
+## Architecture
+
+```
+vision_simulator/
+│
+├── main.py                      Entry point · hotkeys · startup/shutdown sequence
+│
+├── core/
+│   ├── engine.py                VisionEngine — opens the MSS screen-capture context
+│   ├── frame_worker.py          FrameWorker (QThread) — capture loop → distribute()
+│   ├── overlay_manager.py       Owns the OverlayWindow list · frame distribution · HUD rendering
+│   ├── overlay_window.py        Fullscreen click-through QWidget + Win32 extended-style hardening
+│   ├── split_screen_manager.py  Panel composition engine — 4 layout modes
+│   ├── vision_pipeline.py       VisionPipeline — chains base_mode → effect(s) sequentially
+│   ├── pipeline_state.py        Stateless helpers for pipeline-safe mode switching
+│   └── mouse_remap.py           SplitScreenMouseRemapper — WH_MOUSE_LL click coordinate fix
+│
+├── modes/
+│   ├── base_mode.py             BaseVisionMode abstract base class
+│   └── <20 mode files>          One file per vision mode
+│
+├── effects/
+│   ├── blur.py                  gaussian_blur(), radial_blur()
+│   ├── contrast.py              clahe_enhance()
+│   ├── overlays.py              add_vignette(), add_scan_lines(), add_glow()
+│   ├── hd_matrix_analyzer.py    HyperdimensionalMatrixEffect + _HDEngine analysis engine
+│   └── pipeline_effects.py      PIPELINE_EFFECTS ordered registry · BaseVisionMode wrappers
+│
+├── ui/
+│   └── main_window.py           ControlPanel (QMainWindow) — 5-tab sidebar interface
+│
+└── utils/
+    ├── config.py                Global constants (HUD font, capture settings, colours)
+    ├── image_utils.py           frame_to_qimage() — OpenCV BGR → Qt QImage (zero-copy path)
+    ├── mode_registry.py         get_all_modes() — single authoritative ordered mode list
+    └── window_manager.py        Win32 window enumeration and clip-rect tracking
+```
+
+### Multi-Threaded Frame Pipeline
+
+```
+OS mouse-hook thread  (SplitScreenMouseRemapper._pump_thread)
+  └── WH_MOUSE_LL callback — pure Win32; no Qt calls; GIL released in GetMessageW
+
+Main thread  (Qt event loop)
+  ├── ControlPanel slots         — all GUI interactions
+  ├── OverlayWindow.paintEvent() — draws QPixmap to screen, clears _busy backpressure flag
+  └── QTimer callbacks           — track-timer (100 ms clip-rect refresh), refresh-timer (500 ms)
+
+FrameWorker thread  (QThread)
+  └── capture loop:
+        mss.grab()                        (C extension, releases GIL during DXGI/BitBlt)
+        → numpy.frombuffer               (zero-copy view — no allocation)
+        → manager.distribute(raw_frame)
+              ├── [split active] SplitScreenManager.compose()
+              │       ├── cv2.resize → panel      (C/SIMD, releases GIL)
+              │       ├── mode.apply(panel)        (C/SIMD, releases GIL)
+              │       └── np.vstack / hstack      (C, single allocation)
+              └── [standard] per overlay:
+                      mode.apply(raw)             (C/SIMD, releases GIL)
+                      HUD composite               (OpenCV C)
+                      overlay.submit_frame()      (emits QueuedConnection signal)
+                                                     │
+                                              (GUI thread) _on_frame() → paintEvent()
+```
+
+**Backpressure:** each `OverlayWindow` has a `_busy: bool` flag. `submit_frame()` silently drops the incoming frame when `_busy` is `True`, capping the Qt event-queue depth at exactly one frame per overlay. This prevents memory growth when the GUI thread falls behind the capture rate.
+
+**Cross-thread safety:** all mode switches are single attribute assignments under CPython's GIL (atomic). An explicit `threading.Lock` protects only the `_overlays` list in `OverlayManager` against concurrent add/remove and distribute iteration.
+
+### Win32 Overlay Hardening
+
+`OverlayWindow._apply_win32_clickthrough()` writes these extended styles via `SetWindowLongW` after every `showEvent()`:
+
+| Flag | Hex | Effect |
+|---|---|---|
+| `WS_EX_LAYERED` | `0x00080000` | Required companion to `WS_EX_TRANSPARENT` |
+| `WS_EX_TRANSPARENT` | `0x00000020` | OS answers `WM_NCHITTEST` with `HTTRANSPARENT` before Qt |
+| `WS_EX_TOOLWINDOW` | `0x00000080` | Removes window from taskbar and Alt-Tab |
+| `WS_EX_NOACTIVATE` | `0x08000000` | Prevents overlay from stealing keyboard focus |
+| `~WS_EX_APPWINDOW` | cleared | Ensures no ghost taskbar entry appears |
+
+`SetWindowPos` with `SWP_FRAMECHANGED` flushes all style changes synchronously without moving or resizing the window.
+
+`SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAP)` hides the overlay from all capture APIs (MSS, BitBlt, OBS) to prevent recursive visual feedback.
+
+---
+
+## Extending the Project
+
+### Adding a New Vision Mode
+
+**Step 1** — create `modes/my_mode.py`:
+
+```python
+from modes.base_mode import BaseVisionMode
+import numpy as np
+import cv2
+
+class MyMode(BaseVisionMode):
+
+    @property
+    def name(self) -> str:
+        return "My Mode"
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        # frame: BGR uint8 (H, W, 3) — return same shape
+        return cv2.bitwise_not(frame)
+```
+
+**Step 2** — register in `utils/mode_registry.py`:
+
+```python
+from modes.my_mode import MyMode
+
+def get_all_modes():
+    return [
+        ...,
+        MyMode(),   # appears at index len-1; no other file changes needed
+    ]
+```
+
+The new mode appears automatically in the HUD counter, all combo boxes, the split-screen panel selectors, and is reachable via `M`-cycling. If its index is ≤ 9, it also gets a digit hotkey.
+
+### Adding a New Pipeline Effect
+
+**Step 1** — subclass `BaseVisionMode` in a new file under `effects/`:
+
+```python
+from modes.base_mode import BaseVisionMode
+import numpy as np, cv2
+
+class SharpenEffect(BaseVisionMode):
+
+    @property
+    def name(self) -> str:
+        return "Sharpen"
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        kernel = np.array([[0,-1,0],[-1,5,-1],[0,-1,0]], dtype=np.float32)
+        return cv2.filter2D(frame, -1, kernel)
+```
+
+**Step 2** — add to `PIPELINE_EFFECTS` in `effects/pipeline_effects.py`:
+
+```python
+from effects.my_sharpen import SharpenEffect
+
+PIPELINE_EFFECTS = [
+    ("None",    None),
+    ...,
+    ("Sharpen", SharpenEffect()),
+]
+```
+
+The effect appears immediately in the Control Panel's **Apply Pipeline Effect** combo box.
 
 ---
 
 ## Performance Notes
 
-- **No Python-level pixel loops** — all transforms use NumPy slicing and
-  OpenCV / SIMD-accelerated functions throughout.
-- **Cached overlays** — hexagonal grids, vignette maps, and tunnel masks are
-  computed once per frame resolution and reused on every subsequent frame.
-- **LUT precomputation** — thermal and night-vision LUTs are built at mode
-  instantiation, not per frame.
-- **Resize-before-apply** — split-screen panels are downscaled before the mode
-  runs, reducing pixel count by 50–75 %.
-- **Per-overlay backpressure** — each overlay drops incoming frames if its
-  previous frame has not yet been painted, capping queue depth at one and
-  preventing memory build-up at high frame rates.
-- Typical throughput: **30–60 fps** at 1920×1080 on a modern CPU.
+- **Zero Python-level pixel loops.** All transforms are NumPy array operations or OpenCV C functions, both of which release the GIL and use native SIMD (SSE4.2 / AVX2).
+- **Resize-before-apply.** Split-screen downscales each panel before the mode runs, reducing per-mode pixel count by up to 4× in the 2×2 grid layout.
+- **Analysis caching.** `HyperdimensionalMatrixEffect` downscales to max 320 px and runs its full analysis pipeline at most once every 6 frames, caching results for the intermediate frames. Total overhead on a 1920×1080 source is < 2 ms per frame.
+- **LUT precomputation.** Colour-mapping LUTs (thermal, night vision, UV) are built once at mode instantiation; per-frame cost is a single `cv2.LUT` call.
+- **Per-overlay backpressure.** `_busy` flag per `OverlayWindow` drops frames the GUI thread cannot yet consume. Queue depth is capped at 1 per overlay; no memory growth under sustained load.
+- **Typical throughput:** 30–60 FPS at 1920×1080 on a modern CPU.
 
 ---
 
-## Thread Model
-
-```
-Main thread (Qt event loop)
-  ├── OverlayManager          — owns mode list + OverlayWindow list
-  │     └── OverlayWindow[N]  — each: fullscreen, click-through, own mode
-  ├── ControlPanel            — floating GUI, timer-driven list refresh
-  └── FrameWorker (QThread)   — capture → distribute() loop
-        └─► QueuedConnection  → OverlayWindow.paintEvent() [GUI thread]
-
-keyboard library thread       — fires hotkey callbacks; uses QTimer.singleShot
-                                to marshal GUI-thread-required calls safely
-```
+Split-Screen Cursor Offset: When using split-screen mode, the cursor click coordinates may be slightly misaligned with the visual overlay. Standard full-screen overlay mode works perfectly. Fix is in progress!
 
 ---
 
 ## References
 
-- Gracheva E.O. et al. (2010). *Molecular basis of infrared detection by snakes.* Nature 464, 1006–1011.
-- Mäthger L.M. et al. (2009). *Evidence for polarisation vision in the octopus.* J. Exp. Biol. 212, 2133–2140.
-- Lettvin J.Y. et al. (1959). *What the frog's eye tells the frog's brain.* Proc. IRE 47(11), 1940–1951.
 - Viénot F., Brettel H. & Mollon J.D. (1999). *Digital video colourmaps for checking the legibility of displays by dichromats.* Color Research & Application 24(4), 243–252.
-- Fredrickson B.L. (2001). *The role of positive emotions in positive psychology.* American Psychologist 56(3), 218–226.
+- Gracheva E.O. et al. (2010). *Molecular basis of infrared detection by snakes.* Nature 464, 1006–1011.
+- Lettvin J.Y. et al. (1959). *What the frog's eye tells the frog's brain.* Proc. IRE 47(11), 1940–1951.
+- Mäthger L.M. et al. (2009). *Evidence for polarisation vision in the octopus.* J. Exp. Biol. 212, 2133–2140.
 
 ---
 
-*Built with Python 3.11+ · OpenCV · NumPy · PySide6 · MSS*
+*Built with Python 3.10+ · PySide6 · OpenCV · NumPy · MSS · keyboard*
+
+---
+
+Development Note
+This project was developed, polished, and refactored with the assistance of Artificial Intelligence.

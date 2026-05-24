@@ -25,6 +25,7 @@ from modes.base_mode import BaseVisionMode
 from effects.blur import gaussian_blur, radial_blur
 from effects.contrast import clahe_enhance
 from effects.overlays import add_vignette, add_scan_lines, add_glow
+from effects.hd_matrix_analyzer import HyperdimensionalMatrixEffect
 
 
 # ── Effect wrappers ────────────────────────────────────────────────────────────
@@ -125,11 +126,12 @@ class RadialBlurEffect(BaseVisionMode):
 # Ordered (display_name, instance_or_None) pairs for QComboBox population.
 # Index 0 is always the "None" sentinel (no effect applied).
 PIPELINE_EFFECTS: List[Tuple[str, Optional[BaseVisionMode]]] = [
-    ("None",          None),
-    ("Gaussian Blur", GaussianBlurEffect()),
-    ("High Contrast", HighContrastEffect()),
-    ("Vignette",      VignetteEffect()),
-    ("Scan Lines",    ScanlineEffect()),
-    ("Glow",          GlowEffect()),
-    ("Radial Blur",   RadialBlurEffect()),
+    ("None",              None),
+    ("Gaussian Blur",     GaussianBlurEffect()),
+    ("High Contrast",     HighContrastEffect()),
+    ("Vignette",          VignetteEffect()),
+    ("Scan Lines",        ScanlineEffect()),
+    ("Glow",              GlowEffect()),
+    ("Radial Blur",       RadialBlurEffect()),
+    ("HD Matrix Analyzer", HyperdimensionalMatrixEffect()),
 ]

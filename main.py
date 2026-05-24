@@ -4,33 +4,35 @@ Vision Simulator — Entry Point (Phase 4: Window-Aware Filtering + Control Pane
 Shutdown sequence (critical — same two-phase pattern as Phase 1)
 ─────────────────────────────────────────────────────────────────
 app.aboutToQuit (GUI thread):
-  1. manager.hide_all()     — all overlay HWNDs disappear immediately;
+  1. remapper.stop()        — removes the WH_MOUSE_LL hook; joins pump thread.
+  2. manager.hide_all()     — all overlay HWNDs disappear immediately;
                               Windows never sees an unresponsive window covering
                               the screen, so no 'Not Responding' dialog appears.
-  2. worker.request_stop()  — sets _running=False (non-blocking flag only).
+  3. worker.request_stop()  — sets _running=False (non-blocking flag only).
                               Do NOT connect worker.stop() here — stop() calls
                               QThread.wait(3000) which blocks the main thread
                               while Qt is still dispatching queued signals → deadlock.
 app.exec() returns:
-  3. keyboard.unhook_all()  — remove OS-level hooks before process exits.
-  4. worker.wait(300)       — give thread up to 300 ms to exit cleanly.
-  5. worker.terminate()     — force-kill if it didn't stop in time.
+  4. keyboard.unhook_all()  — remove OS-level hooks before process exits.
+  5. worker.wait(300)       — give thread up to 300 ms to exit cleanly.
+  6. worker.terminate()     — force-kill if it didn't stop in time.
 
 Architecture
 ────────────
   QApplication (main thread / Qt event loop)
     ├── OverlayManager  — owns mode list + dynamic list of OverlayWindow instances
     │     └── OverlayWindow[0..N]  — each: fullscreen, click-through, own mode
-    └── FrameWorker     — QThread: capture → manager.distribute(raw_frame)
+    ├── FrameWorker     — QThread: capture → manager.distribute(raw_frame)
+    └── SplitScreenMouseRemapper — WH_MOUSE_LL hook thread; remaps clicks in split-screen
 
-Keyboard hotkeys (all non-ESC use QTimer.singleShot for GUI-thread safety)
+Keyboard hotkeys (all non-° use QTimer.singleShot for GUI-thread safety)
 ────────────────
   N         Add a new overlay (starts at mode 1 / Dog Vision)
   M         Cycle the last overlay's vision mode forward
   X         Remove the last overlay
   C         Toggle the Control Panel window
   1–9 / 0   Set mode 0–9 on the last overlay
-  ESC       Quit (app.quit() is thread-safe in Qt 5+)
+  °         Disable split-screen (first press) or quit (when split-screen is off)
 """
 
 import sys
@@ -41,6 +43,7 @@ from PySide6.QtCore import Qt, QTimer
 from core.engine import VisionEngine
 from core.overlay_manager import OverlayManager
 from core.frame_worker import FrameWorker
+from core.mouse_remap import SplitScreenMouseRemapper   # Phase 6: split-screen click remapper
 from utils.window_manager import WindowManager
 from ui.main_window import ControlPanel
 
@@ -58,7 +61,7 @@ def _print_banner(manager: OverlayManager) -> None:
         print(f"║  {key_label:<5}  {mode.name:<43}║")
     print("╠══════════════════════════════════════════════════════╣")
     print("║  [N] New overlay   [M] Cycle mode   [X] Remove last ║")
-    print("║  [1-9/0] Set mode on last overlay   [ESC] Quit      ║")
+    print("║  [1-9/0] Set mode on last overlay   [°] Exit        ║")
     print("╚══════════════════════════════════════════════════════╝")
     print()
 
@@ -138,18 +141,21 @@ def _register_hotkeys(
         suppress=False,
     )
 
-    # ESC: deactivate split-screen (first press) or quit (no split active).
-    # Unguarded — must always be reachable to avoid getting stuck.
-    def _on_esc() -> None:
+    # °: deactivate split-screen (first press) or quit (when split-screen is off).
+    # This replaces ESC so that the overlay's exit key never conflicts with ESC
+    # usage in other applications (browsers, games, terminals, etc.).
+    # Unguarded — must always be reachable to avoid getting stuck inside the overlay.
+    def _on_degree() -> None:
         if manager.split_screen.is_active:
-            from core.split_screen_manager import LAYOUT_NONE
-            manager.split_screen.layout_mode = LAYOUT_NONE
-            # Sync the radio-button UI on the GUI thread
-            QTimer.singleShot(0, app, panel._sync_split_screen_ui)
+            from core.split_screen_manager import LAYOUT_NONE          # local import — avoids circular dep
+            manager.split_screen.layout_mode = LAYOUT_NONE             # disable split-screen
+            # _sync_split_screen_ui touches Qt widgets → must run on the GUI thread.
+            # QTimer.singleShot(0, context, fn) posts fn to the GUI event loop safely.
+            QTimer.singleShot(0, app, panel._sync_split_screen_ui)     # refresh radio-button state
         else:
-            app.quit()
+            app.quit()                                                  # no split active → exit
 
-    keyboard.on_press_key("esc", lambda _: _on_esc(), suppress=False)
+    keyboard.on_press_key("°", lambda _: _on_degree(), suppress=False)  # ° = new overlay escape key
 
 
 def main() -> None:
@@ -185,10 +191,20 @@ def main() -> None:
     worker         = FrameWorker(engine, manager)
     panel          = ControlPanel(manager, window_manager)
 
+    # Create the split-screen click remapper after manager (needs manager.split_screen).
+    # The remapper's background thread is started here and owns the WH_MOUSE_LL hook.
+    # It reads manager.split_screen.is_active and .layout_mode on every button event;
+    # both are plain attribute reads, safe under CPython's GIL without a lock.
+    remapper = SplitScreenMouseRemapper(manager.split_screen)  # inject shared split_screen ref
+    remapper.start()                                           # spawn pump thread, install hook
+
     # ── Shutdown hooks (ORDER MATTERS) ────────────────────────────────────
-    # 1. hide_all() must be FIRST — all HWNDs vanish before any cleanup runs.
-    # 2. request_stop() is non-blocking (flag only) — safe inside aboutToQuit.
-    # 3. panel.force_close() allows the panel window to actually close.
+    # 1. remapper.stop() FIRST — removes the WH_MOUSE_LL hook cleanly before
+    #    any Qt widget is destroyed; the hook thread must not outlive the app.
+    # 2. hide_all() second — all overlay HWNDs vanish before further cleanup.
+    # 3. request_stop() is non-blocking (flag only) — safe inside aboutToQuit.
+    # 4. panel.force_close() allows the panel window to actually close.
+    app.aboutToQuit.connect(remapper.stop)      # unhook WH_MOUSE_LL before Qt teardown
     app.aboutToQuit.connect(manager.hide_all)
     app.aboutToQuit.connect(worker.request_stop)
     app.aboutToQuit.connect(panel.force_close)

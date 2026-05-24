@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 
 # ── Layout constants ──────────────────────────────────────────────────────────
 _PANEL_W  = 760
-_PANEL_H  = 520
+_PANEL_H  = 680     # increased from 520 — gives the Split Screen and Regions views breathing room
 _SIDEBAR_W = 148
 
 
@@ -828,8 +828,15 @@ class ControlPanel(QMainWindow):
         layout_name = _LAYOUT_MAP[layout_id]
         ss = self._manager.split_screen
 
-        # Write layout first so is_active() is correct immediately after
+        # Write layout first so is_active() is correct immediately after.
+        # sync_split_screen_windows() reads is_active() so it must run AFTER this.
         ss.layout_mode = layout_name
+
+        # Reconcile overlay visibility with the new split-screen state.
+        # When split is active this hides overlays[1:] so they do not occlude
+        # the composed frame that distribute() writes to overlays[0].
+        # When split is off it restores all overlays to visible.
+        self._manager.sync_split_screen_windows()  # hides/shows overlays per z-order fix
 
         if layout_name != "none":
             for slot, combo in enumerate(self._split_combos):
