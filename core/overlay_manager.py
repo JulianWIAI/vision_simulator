@@ -297,6 +297,46 @@ class OverlayManager(QObject):
 
     # ── Phase 4: windowed overlays ────────────────────────────────────────
 
+    def add_region_overlay(
+        self,
+        rect: Tuple[int, int, int, int],
+        mode_index: int = 0,
+    ) -> None:
+        """
+        Creates an overlay clipped to a static drawn rectangle.
+
+        Unlike add_windowed_overlay(), the clip rect is fixed — it does not
+        track any window HWND and never updates as windows move.
+
+        Args:
+            rect:       (x1, y1, x2, y2) in desktop coordinates.
+            mode_index: Index into self._modes for the initial vision mode.
+        """
+        mode_index = mode_index % len(self._modes)
+        overlay_id = self._next_id
+        self._next_id += 1
+
+        overlay = OverlayWindow(
+            overlay_id=overlay_id,
+            mode=self._modes[mode_index],
+            mode_index=mode_index,
+            all_modes=self._modes,
+        )
+        overlay.clip_rect    = rect
+        overlay.tracked_hwnd = None        # static region — no window tracking
+        overlay.show()
+
+        with self._lock:
+            self._overlays.append(overlay)
+
+        self.overlays_changed.emit()
+        w = rect[2] - rect[0]
+        h = rect[3] - rect[1]
+        print(
+            f"  + Region Overlay {overlay_id + 1}: "
+            f"{w}×{h} px  →  {self._modes[mode_index].name}"
+        )
+
     def add_windowed_overlay(
         self,
         hwnd: int,
@@ -423,6 +463,8 @@ class OverlayManager(QObject):
                     "mode_index":   ov.mode_index,
                     "tracked_hwnd": ov.tracked_hwnd,
                     "has_clip":     ov.clip_rect is not None,
+                    # True when the overlay is a drawn region (clip rect set, no HWND)
+                    "is_region":    ov.clip_rect is not None and ov.tracked_hwnd is None,
                 }
                 for ov in self._overlays
             ]

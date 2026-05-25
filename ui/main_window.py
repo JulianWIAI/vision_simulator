@@ -485,11 +485,28 @@ class ControlPanel(QMainWindow):
         track_btn.clicked.connect(self._on_track_window)
         layout.addWidget(track_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
+        layout.addWidget(_separator())
+        layout.addWidget(_section_label("DRAW REGION"))
+
+        draw_mode_row = QHBoxLayout()
+        draw_mode_row.addWidget(QLabel("Vision Mode:"))
+        self._draw_region_mode_combo = QComboBox()
+        _fill_mode_combo(self._draw_region_mode_combo, self._manager.modes)
+        draw_mode_row.addWidget(self._draw_region_mode_combo)
+        draw_mode_row.addStretch()
+        layout.addLayout(draw_mode_row)
+
+        draw_btn = QPushButton("✦  Draw Region on Screen")
+        draw_btn.setObjectName("accent")
+        draw_btn.clicked.connect(self._on_draw_region)
+        layout.addWidget(draw_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+
         layout.addStretch()
 
         self._windows_status = QLabel(
             "Select a window and choose a mode, then click Track.\n"
-            "The overlay will follow the window as it moves."
+            "The overlay will follow the window as it moves.\n"
+            "Or draw a custom region directly on the screen."
         )
         self._windows_status.setObjectName("status_label")
         self._windows_status.setWordWrap(True)
@@ -781,6 +798,44 @@ class ControlPanel(QMainWindow):
         mode_name = self._manager.modes[mode_idx].name
         self._windows_status.setText(f"Tracking: {title!r}  —  {mode_name}")
 
+    def _on_draw_region(self) -> None:
+        """
+        Hides the control panel and opens the full-screen region drawer.
+
+        The drawer emits region_selected(x1, y1, x2, y2) on a valid drag, or
+        cancelled() on ESC / right-click.  Both slots re-show the panel.
+        """
+        from ui.region_drawer import RegionDrawer
+
+        mode_idx = self._draw_region_mode_combo.currentIndex()
+        self.hide()
+
+        self._region_drawer = RegionDrawer()
+        self._region_drawer.region_selected.connect(
+            lambda x1, y1, x2, y2: self._on_region_drawn(x1, y1, x2, y2, mode_idx)
+        )
+        self._region_drawer.cancelled.connect(self._on_region_cancelled)
+        self._region_drawer.show()
+        # Give the drawer keyboard focus so ESC is reliably received
+        self._region_drawer.activateWindow()
+        self._region_drawer.setFocus()
+
+    def _on_region_drawn(
+        self, x1: int, y1: int, x2: int, y2: int, mode_idx: int
+    ) -> None:
+        """Creates the region overlay and re-shows the panel."""
+        self._manager.add_region_overlay((x1, y1, x2, y2), mode_index=mode_idx)
+        mode_name = self._manager.modes[mode_idx].name
+        self._windows_status.setText(
+            f"Region created: {x2 - x1} × {y2 - y1} px  —  {mode_name}"
+        )
+        self.show()
+
+    def _on_region_cancelled(self) -> None:
+        """Re-shows the panel after the user cancels region drawing."""
+        self._windows_status.setText("Region drawing cancelled.")
+        self.show()
+
     # ·· Global Modes view ················································
 
     def _on_apply_global_mode(self) -> None:
@@ -911,7 +966,12 @@ class ControlPanel(QMainWindow):
             self._regions_list.clear()
             restore_row = -1
             for row, info in enumerate(infos):
-                scope = "Window" if info["has_clip"] else "Full Screen"
+                if info.get("is_region"):
+                    scope = "Region"
+                elif info["has_clip"]:
+                    scope = "Window"
+                else:
+                    scope = "Full Screen"
                 text  = f"#{info['id'] + 1}  —  {info['mode_name']}   [{scope}]"
                 item  = QListWidgetItem(text)
                 item.setData(Qt.ItemDataRole.UserRole, info["id"])

@@ -17,6 +17,7 @@ Built with **PySide6 (Qt for Python)**, **OpenCV**, **mss**, and **NumPy**. Targ
 | **Click-through** | Overlay is fully transparent to mouse and keyboard input; desktop stays interactive |
 | **Split-screen click remapping** | Win32 `WH_MOUSE_LL` hook corrects click positions inside scaled split panels |
 | **Window-tracked overlays** | Clip any overlay to a specific Win32 window; the clip rect follows as the window moves |
+| **Draw Region** | Click-drag to paint a free rectangle on screen — the filter applies only inside it; multiple regions supported |
 | **HD Matrix Analyzer** | Spatial curvature analysis, SUSY symmetry lines, gravitational aura, and instability border |
 | **Control Panel GUI** | Floating dark-theme sidebar panel for all settings (show/hide with `C`) |
 | **Capture exclusion** | Overlay is hidden from MSS / BitBlt so it never feeds back into its own capture |
@@ -74,7 +75,12 @@ python main.py
 
 ## Quick Start
 
-```
+**Option A — double-click launcher:**  
+Double-click `run.bat` in the project folder. Windows may show a SmartScreen prompt the first time; click **More info → Run anyway**.
+
+**Option B — terminal:**
+```powershell
+.\.venv\Scripts\Activate.ps1
 python main.py
 ```
 
@@ -171,6 +177,23 @@ When a `VisionPipeline` is active, pressing `M` or a digit key swaps only the **
 
 ---
 
+## Draw Region
+
+The **Windows** tab in the Control Panel includes a **Draw Region** tool that lets you apply any vision filter to an arbitrary rectangle on the screen — not bound to any specific window.
+
+**How to use it:**
+
+1. Open the Control Panel → go to the **Windows** tab.
+2. Pick a vision mode from the **Draw Region** dropdown.
+3. Click **✦ Draw Region on Screen** — the panel hides and a full-screen drawing canvas appears with a crosshair cursor and a faint dark tint.
+4. Click and drag to define a rectangle. A live size indicator (e.g. `640 × 360`) appears at the corner while dragging.
+5. Release the mouse — the canvas closes, the panel reappears, and the region overlay is created silently with no visible border.
+6. Press `ESC` or right-click at any point to cancel.
+
+Multiple regions can be drawn. Each appears in the **Regions** list labelled `[Region]` and supports the same mode-switching and pipeline effects as any other overlay. A region overlay can be removed by selecting it in the Regions list and clicking **✕ Remove Selected**.
+
+---
+
 ## Split-Screen Comparison
 
 Open the **Split Screen** tab in the Control Panel to select a layout and assign modes to each panel slot.
@@ -241,7 +264,8 @@ vision_simulator/
 │   └── pipeline_effects.py      PIPELINE_EFFECTS ordered registry · BaseVisionMode wrappers
 │
 ├── ui/
-│   └── main_window.py           ControlPanel (QMainWindow) — 5-tab sidebar interface
+│   ├── main_window.py           ControlPanel (QMainWindow) — 5-tab sidebar interface
+│   └── region_drawer.py         RegionDrawer — full-screen drag-to-draw region selector
 │
 └── utils/
     ├── config.py                Global constants (HUD font, capture settings, colours)
@@ -379,10 +403,6 @@ The effect appears immediately in the Control Panel's **Apply Pipeline Effect** 
 - **LUT precomputation.** Colour-mapping LUTs (thermal, night vision, UV) are built once at mode instantiation; per-frame cost is a single `cv2.LUT` call.
 - **Per-overlay backpressure.** `_busy` flag per `OverlayWindow` drops frames the GUI thread cannot yet consume. Queue depth is capped at 1 per overlay; no memory growth under sustained load.
 - **Typical throughput:** 30–60 FPS at 1920×1080 on a modern CPU.
-
----
-
-Split-Screen Cursor Offset: When using split-screen mode, the cursor click coordinates may be slightly misaligned with the visual overlay. Standard full-screen overlay mode works perfectly. Fix is in progress!
 
 ---
 
