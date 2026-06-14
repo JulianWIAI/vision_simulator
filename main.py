@@ -32,7 +32,7 @@ Keyboard hotkeys (all non-° use QTimer.singleShot for GUI-thread safety)
   X         Remove the last overlay
   C         Toggle the Control Panel window
   1–9 / 0   Set mode 0–9 on the last overlay
-  °         Disable split-screen (first press) or quit (when split-screen is off)
+  F12       Disable split-screen (first press) or quit (when split-screen is off)
 """
 
 import sys
@@ -61,7 +61,7 @@ def _print_banner(manager: OverlayManager) -> None:
         print(f"║  {key_label:<5}  {mode.name:<43}║")
     print("╠══════════════════════════════════════════════════════╣")
     print("║  [N] New overlay   [M] Cycle mode   [X] Remove last ║")
-    print("║  [1-9/0] Set mode on last overlay   [°] Exit        ║")
+    print("║  [1-9/0] Set mode on last overlay   [F12] Exit      ║")
     print("╚══════════════════════════════════════════════════════╝")
     print()
 
@@ -141,11 +141,13 @@ def _register_hotkeys(
         suppress=False,
     )
 
-    # °: deactivate split-screen (first press) or quit (when split-screen is off).
-    # This replaces ESC so that the overlay's exit key never conflicts with ESC
-    # usage in other applications (browsers, games, terminals, etc.).
+    # F12: deactivate split-screen (first press) or quit (when split-screen is off).
+    # F12 is used instead of a symbol key (°) because symbol keys are layout-
+    # dependent — the ° scan code is absent on Japanese and many non-European
+    # keyboard layouts, causing a ValueError in the keyboard library at startup.
+    # F12 exists on every keyboard regardless of language setting.
     # Unguarded — must always be reachable to avoid getting stuck inside the overlay.
-    def _on_degree() -> None:
+    def _on_f12() -> None:
         if manager.split_screen.is_active:
             from core.split_screen_manager import LAYOUT_NONE          # local import — avoids circular dep
             manager.split_screen.layout_mode = LAYOUT_NONE             # disable split-screen
@@ -155,7 +157,7 @@ def _register_hotkeys(
         else:
             app.quit()                                                  # no split active → exit
 
-    keyboard.on_press_key("°", lambda _: _on_degree(), suppress=False)  # ° = new overlay escape key
+    keyboard.on_press_key("F12", lambda _: _on_f12(), suppress=False)  # F12 = exit / disable split-screen
 
 
 def main() -> None:
