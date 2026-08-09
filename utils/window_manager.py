@@ -1,52 +1,65 @@
 """
-Window Manager — Phase 4
+utils/window_manager.py
 
-Enumerates and caches visible Win32 windows using ctypes (no extra deps).
-The full window list is refreshed at most every REFRESH_INTERVAL seconds,
-never on every frame, satisfying the per-frame performance requirement.
+Enumerates and caches visible top-level windows for the window-tracked
+overlay feature.
 
-Data contract (public):
+Cross-platform design
+─────────────────────
+All OS-specific enumeration and geometry queries are delegated to the
+platform abstraction layer (platform/):
+
+  Windows → platform.windows.WindowsPlatform
+              Uses EnumWindows, GetWindowRect, IsWindow, IsWindowVisible,
+              IsIconic — all via ctypes/Win32.
+
+  macOS   → platform.macos.MacOSPlatform
+              Uses Quartz.CGWindowListCopyWindowInfo for enumeration and
+              per-window rect queries.
+
+Data contract (unchanged from the original implementation)
+─────────────────────────────────────────────────────────
+Every window entry is a plain dict:
     {"id": int, "title": str, "rect": (x1, y1, x2, y2)}
 
-where rect is in desktop/screen coordinates as returned by GetWindowRect.
+"id" is the platform's native window handle (HWND on Windows, CGWindowID
+on macOS).  Rect is in screen/desktop coordinates.
+
+Thread safety
+─────────────
+A threading.Lock protects the cached list and refresh timestamp.
+get_rect() / is_valid() / is_minimized() issue live platform queries with
+no shared state, so they do not need the lock.
 """
 
 from __future__ import annotations
 
-import ctypes
-import ctypes.wintypes
 import threading
 import time
 from typing import List, Optional, Tuple
 
+from platform import get_platform
 
-_REFRESH_INTERVAL: float = 2.0  # seconds between full-list refreshes
 
-_EnumWindowsProc = ctypes.WINFUNCTYPE(
-    ctypes.c_bool,
-    ctypes.wintypes.HWND,
-    ctypes.wintypes.LPARAM,
-)
+# How long (seconds) the cached window list is considered fresh.
+# After this interval, the next get_windows() call re-enumerates.
+_REFRESH_INTERVAL: float = 2.0
 
 
 class WindowManager:
     """
-    Enumerates and caches visible, titled top-level Win32 windows.
+    Enumerates and caches visible, titled top-level windows.
 
-    Thread-safe: a single threading.Lock guards both the cached list and
-    the last-refresh timestamp.  get_rect() issues a live Win32 call that
-    touches no shared state and therefore needs no lock.
-
-    All returned window entries are plain dicts:
-        {"id": int, "title": str, "rect": (x1, y1, x2, y2)}
+    All actual OS calls go through get_platform(), which returns the
+    correct AbstractPlatform implementation for the current OS.
     """
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._lock         = threading.Lock()
         self._windows: List[dict] = []
         self._last_refresh: float = 0.0
 
-    # ── Public API ────────────────────────────────────────────────────────
+    # ── Public API ─────────────────────────────────────────────────────────
 
     def get_windows(self, force: bool = False) -> List[dict]:
         """
@@ -61,81 +74,30 @@ class WindowManager:
         now = time.monotonic()
         with self._lock:
             if force or (now - self._last_refresh) >= _REFRESH_INTERVAL:
-                self._windows = _enumerate_windows()
+                # Delegate enumeration to the platform layer.
+                self._windows      = get_platform().list_windows()
                 self._last_refresh = now
-            return list(self._windows)
+            return list(self._windows)   # return a copy, not the live list
 
-    def get_rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
+    def get_rect(self, window_id: int) -> Optional[Tuple[int, int, int, int]]:
         """
         Returns the current on-screen rect of a specific window — live, not cached.
 
-        Suitable for per-100ms tracking of position shifts.
-        Does not acquire the internal lock (no shared state involved).
+        Suitable for per-100 ms tracking of position shifts.  Does not acquire
+        the internal lock because no shared state is involved.
 
         Args:
-            hwnd: Native HWND stored in a window entry's "id" field.
+            window_id: The "id" value from a get_windows() entry.
 
         Returns:
-            (x1, y1, x2, y2) in desktop coordinates, or None if the HWND
-            is stale / no longer valid.
+            (x1, y1, x2, y2) in screen coordinates, or None if stale / invalid.
         """
-        rect = ctypes.wintypes.RECT()
-        if not ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-            return None
-        return (rect.left, rect.top, rect.right, rect.bottom)
+        return get_platform().get_window_rect(window_id)
 
-    def is_valid(self, hwnd: int) -> bool:
-        """Returns True if the HWND still exists and is visible."""
-        return bool(
-            ctypes.windll.user32.IsWindow(hwnd)
-            and ctypes.windll.user32.IsWindowVisible(hwnd)
-        )
+    def is_valid(self, window_id: int) -> bool:
+        """Returns True if the window still exists and is visible."""
+        return get_platform().is_window_valid(window_id)
 
-    def is_minimized(self, hwnd: int) -> bool:
-        """Returns True if the window is currently minimized (iconic)."""
-        return bool(ctypes.windll.user32.IsIconic(hwnd))
-
-
-# ── Private enumeration ────────────────────────────────────────────────────────
-
-def _enumerate_windows() -> List[dict]:
-    """
-    Synchronously enumerates all visible, titled, non-zero-area top-level windows.
-
-    Called at most every REFRESH_INTERVAL seconds; never per-frame.
-    Filters out: invisible windows, untitled windows, zero-area rects
-    (minimised or off-screen pseudo-windows).
-    """
-    results: List[dict] = []
-
-    def _callback(hwnd: int, _: int) -> bool:
-        if not ctypes.windll.user32.IsWindowVisible(hwnd):
-            return True
-
-        length: int = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
-        if length == 0:
-            return True
-
-        buf = ctypes.create_unicode_buffer(length + 1)
-        ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
-        title = buf.value.strip()
-        if not title:
-            return True
-
-        rect = ctypes.wintypes.RECT()
-        if not ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-            return True
-
-        if (rect.right - rect.left) <= 0 or (rect.bottom - rect.top) <= 0:
-            return True
-
-        results.append({
-            "id":    hwnd,
-            "title": title,
-            "rect":  (rect.left, rect.top, rect.right, rect.bottom),
-        })
-        return True
-
-    proc = _EnumWindowsProc(_callback)
-    ctypes.windll.user32.EnumWindows(proc, 0)
-    return results
+    def is_minimized(self, window_id: int) -> bool:
+        """Returns True if the window is currently minimized / iconified."""
+        return get_platform().is_window_minimized(window_id)

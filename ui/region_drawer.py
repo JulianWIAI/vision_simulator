@@ -1,9 +1,24 @@
 """
-Region Drawer
 ui/region_drawer.py
 
 Full-screen transparent input-capture window that lets the user drag a
 rectangle to define a regional overlay area.
+
+Cross-platform design
+─────────────────────
+All OS-specific window hardening is delegated to the platform abstraction
+layer via get_platform().apply_drawer_styles(self).
+
+On Windows, the platform layer applies:
+  WS_EX_LAYERED   — enables the layered-window compositing path (translucency)
+  WS_EX_TOOLWINDOW — hides from taskbar / Alt-Tab
+  WS_EX_NOACTIVATE — prevents focus theft from the shell
+  WS_EX_TRANSPARENT is intentionally NOT applied here: unlike the overlay
+  windows, the drawer must receive all mouse events to track the drag gesture.
+
+On macOS, Qt.Tool + Qt.WindowStaysOnTopHint + WA_TranslucentBackground are
+sufficient; the platform call adds capture exclusion so the canvas does not
+appear in MSS frames while the user is drawing.
 
 Usage
 ─────
@@ -15,37 +30,18 @@ Usage
 The caller hides the control panel before showing the drawer so the full
 desktop is visible.  The drawer emits region_selected (or cancelled) and
 hides itself; the caller's slot re-shows the panel and creates the overlay.
-
-Win32 notes
-───────────
-WS_EX_TRANSPARENT is intentionally NOT applied here — unlike the overlay
-windows, the drawer must receive all mouse events to track the drag.
-WS_EX_LAYERED is still set so the translucent background renders correctly.
-WS_EX_TOOLWINDOW + WS_EX_NOACTIVATE prevent the window from appearing in the
-taskbar / Alt-Tab list and from stealing keyboard focus from the shell.
 """
 
 from __future__ import annotations
-
-import ctypes
 
 from PySide6.QtCore    import Qt, Signal, QPoint
 from PySide6.QtGui     import QPainter, QColor, QFont, QPen, QKeyEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
+from platform import get_platform
 
-# ── Win32 extended-style constants ────────────────────────────────────────────
-_GWL_EXSTYLE      = -20
-_WS_EX_LAYERED    = 0x00080000
-_WS_EX_TOOLWINDOW = 0x00000080
-_WS_EX_NOACTIVATE = 0x08000000
-_WS_EX_APPWINDOW  = 0x00040000
-_SWP_NOMOVE       = 0x0002
-_SWP_NOSIZE       = 0x0001
-_SWP_NOZORDER     = 0x0004
-_SWP_FRAMECHANGED = 0x0020
 
-# Minimum drag size that counts as a valid region (pixels)
+# Minimum drag size that counts as a valid region (pixels).
 _MIN_REGION_PX = 20
 
 
@@ -72,10 +68,16 @@ class RegionDrawer(QWidget):
     # ── Window initialisation ─────────────────────────────────────────────
 
     def _setup_window(self) -> None:
+        """
+        Applies Qt window flags common to all platforms.
+
+        Note: Qt.WindowTransparentForInput is intentionally omitted — the
+        drawer must receive mouse press / move / release events.
+        """
         flags = (
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
+            | Qt.WindowType.Tool   # hides from taskbar (Win32) / Dock (macOS)
         )
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -84,35 +86,24 @@ class RegionDrawer(QWidget):
         self.setGeometry(QApplication.primaryScreen().geometry())
 
     def showEvent(self, event) -> None:
+        """
+        Applies platform-specific window hardening once the native handle exists.
+
+        Geometry is refreshed at show time to pick up any monitor or resolution
+        changes since the widget was constructed.
+        """
         super().showEvent(event)
-        _ = self.winId()                       # ensure native HWND exists
+
+        # Trigger native handle creation before calling winId() or platform APIs.
+        _ = self.winId()
+
+        # Refresh geometry in case the screen configuration changed.
         self.setGeometry(QApplication.primaryScreen().geometry())
-        self._apply_win32_styles()
 
-    def _apply_win32_styles(self) -> None:
-        """
-        Applies Win32 extended styles.
-
-        WS_EX_TRANSPARENT is intentionally omitted — we need to receive mouse
-        events.  All other flags mirror the overlay windows' configuration so
-        the drawer does not appear in the taskbar or Alt-Tab switcher.
-        """
-        try:
-            hwnd      = int(self.winId())
-            ex_style  = ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
-            new_style = (
-                ex_style
-                | _WS_EX_LAYERED       # required for translucent background
-                | _WS_EX_TOOLWINDOW    # hide from taskbar and Alt-Tab
-                | _WS_EX_NOACTIVATE    # do not steal keyboard focus
-            ) & ~_WS_EX_APPWINDOW      # remove forced taskbar button
-            ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, new_style)
-            ctypes.windll.user32.SetWindowPos(
-                hwnd, 0, 0, 0, 0, 0,
-                _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER | _SWP_FRAMECHANGED,
-            )
-        except Exception as exc:
-            print(f"[RegionDrawer] Win32 error: {exc}")
+        # Delegate OS-specific hardening to the platform abstraction layer.
+        # On Windows: adds WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE.
+        # On macOS:   adds capture exclusion via NSWindow.setSharingType_.
+        get_platform().apply_drawer_styles(self)
 
     # ── Mouse events ──────────────────────────────────────────────────────
 
@@ -147,7 +138,7 @@ class RegionDrawer(QWidget):
                 self.region_selected.emit(x1, y1, x2, y2)
                 return
 
-        # Region too small — reset and let the user try again
+        # Region too small — reset and let the user try again.
         self._start   = None
         self._end     = None
         self._drawing = False
@@ -177,7 +168,7 @@ class RegionDrawer(QWidget):
         # remains readable underneath.
         painter.fillRect(self.rect(), QColor(0, 0, 0, 45))
 
-        # Instruction text centred near the top
+        # Instruction text centred near the top.
         painter.setPen(QColor(220, 220, 220, 220))
         font = QFont("Segoe UI", 13)
         painter.setFont(font)
@@ -187,17 +178,17 @@ class RegionDrawer(QWidget):
             "Click and drag to draw a region  ·  ESC or right-click to cancel",
         )
 
-        # Rectangle preview while dragging
+        # Rectangle preview while dragging.
         if self._start and self._end:
             x1 = min(self._start.x(), self._end.x())
             y1 = min(self._start.y(), self._end.y())
             w  = abs(self._end.x() - self._start.x())
             h  = abs(self._end.y() - self._start.y())
 
-            # Semi-transparent fill inside the selection
+            # Semi-transparent fill inside the selection.
             painter.fillRect(x1, y1, w, h, QColor(137, 180, 250, 35))
 
-            # Dashed outline while dragging; solid on release (briefly before hide)
+            # Dashed outline while dragging; solid on release (briefly before hide).
             pen = QPen(QColor(137, 180, 250, 220), 2)
             pen.setStyle(
                 Qt.PenStyle.DashLine if self._drawing else Qt.PenStyle.SolidLine
@@ -205,15 +196,11 @@ class RegionDrawer(QWidget):
             painter.setPen(pen)
             painter.drawRect(x1, y1, w, h)
 
-            # Size indicator below the bottom-right corner
+            # Size indicator below the bottom-right corner.
             if self._drawing and w > 60 and h > 30:
                 painter.setPen(QColor(200, 200, 200, 180))
                 small_font = QFont("Segoe UI", 10)
                 painter.setFont(small_font)
-                painter.drawText(
-                    x1 + w + 6,
-                    y1 + h + 16,
-                    f"{w} × {h}",
-                )
+                painter.drawText(x1 + w + 6, y1 + h + 16, f"{w} × {h}")
 
         painter.end()
