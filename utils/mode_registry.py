@@ -25,6 +25,7 @@ from modes.frog_vision    import FrogVision
 from modes.uv_vision      import UVVision
 from modes.depth_map      import DepthMapVision
 from modes.ai_edge        import AIEdgeVision
+from modes.color_edge     import ColorEdgeVision
 from modes.colorblind     import ColorBlindVision
 from modes.tunnel_vision    import TunnelVision
 from modes.emotional        import EmotionalVision
@@ -58,6 +59,7 @@ def get_all_modes() -> List[BaseVisionMode]:
         UVVision(),                             # Key 9
         DepthMapVision(),                       # Key 0
         AIEdgeVision(),                         # N/P navigation
+        ColorEdgeVision(),                      # N/P navigation
         ColorBlindVision("deuteranopia"),       # N/P navigation
         ColorBlindVision("protanopia"),         # N/P navigation
         ColorBlindVision("tritanopia"),         # N/P navigation

@@ -10,7 +10,7 @@ Built with **PySide6 (Qt for Python)**, **OpenCV**, **mss**, and **NumPy**. Targ
 
 | Feature | Detail |
 |---|---|
-| **20 built-in vision modes** | Animal eyes, dichromacy, thermal, UV, night, structural, and more |
+| **21 built-in vision modes** | Animal eyes, dichromacy, thermal, UV, AI edge, and more |
 | **VisionPipeline effect chain** | Stack a post-processing effect on any base mode; effects survive mode switching |
 | **Multi-overlay** | Run several independent overlays simultaneously with different modes |
 | **Split-Screen Comparison** | Tile 2 or 4 modes side-by-side (Top/Bottom, Left/Right, 2×2 Grid) |
@@ -96,7 +96,7 @@ Press `°` (degree symbol) to quit, or close the Control Panel window.
 | Key | Action |
 |---|---|
 | `N` | Add a new overlay |
-| `M` | Cycle the last overlay forward through all 20 modes |
+| `M` | Cycle the last overlay forward through all 21 modes |
 | `1` – `9` | Set mode 1–9 on the last overlay |
 | `0` | Set mode 10 on the last overlay |
 | `X` | Remove the last overlay |
@@ -109,7 +109,7 @@ Press `°` (degree symbol) to quit, or close the Control Panel window.
 
 ## Vision Modes
 
-All 20 modes are available as base modes, in the per-overlay selector, in the Global Modes override, and in every split-screen panel slot.
+All 21 modes are available as base modes, in the per-overlay selector, in the Global Modes override, and in every split-screen panel slot.
 
 | # | Mode | Description |
 |---|---|---|
@@ -133,6 +133,7 @@ All 20 modes are available as base modes, in the per-overlay selector, in the Gl
 | 18 | **Monochrome** | Perceptual greyscale (BT.601 luminance coefficients: R×0.299, G×0.587, B×0.114) |
 | 19 | **High Contrast** | CLAHE local contrast enhancement; preserves hue, sharpens local detail |
 | 20 | **Inverted** | Photographic negative; all channel values flipped around 127 |
+| 21 | **Color Edge Overlay** | Full-colour scene with AI-detected edges rendered as thick dark outlines (cel-shading); same Canny + Sobel dual-detector pipeline as AI Edge Detection |
 
 ---
 
@@ -254,7 +255,7 @@ vision_simulator/
 │
 ├── modes/
 │   ├── base_mode.py             BaseVisionMode abstract base class
-│   └── <20 mode files>          One file per vision mode
+│   └── <21 mode files>          One file per vision mode
 │
 ├── effects/
 │   ├── blur.py                  gaussian_blur(), radial_blur()
