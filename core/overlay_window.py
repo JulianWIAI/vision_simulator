@@ -50,7 +50,7 @@ from PySide6.QtCore import Qt, Slot, Signal
 from PySide6.QtGui import QImage, QPixmap, QPainter
 
 from modes.base_mode import BaseVisionMode
-from platform import get_platform
+from platform_layer import get_platform
 
 
 class OverlayWindow(QWidget):

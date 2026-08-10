@@ -38,7 +38,7 @@ from PySide6.QtCore    import Qt, Signal, QPoint
 from PySide6.QtGui     import QPainter, QColor, QFont, QPen, QKeyEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
-from platform import get_platform
+from platform_layer import get_platform
 
 
 # Minimum drag size that counts as a valid region (pixels).

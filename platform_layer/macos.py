@@ -33,7 +33,7 @@ import ctypes
 import ctypes.util
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
-from platform.base import AbstractPlatform, AbstractMouseRemapper
+from platform_layer.base import AbstractPlatform, AbstractMouseRemapper
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
@@ -332,6 +332,6 @@ class MacOSPlatform(AbstractPlatform):
         Requires pyobjc-framework-Quartz and Accessibility permission granted
         in System Preferences → Privacy & Security → Accessibility.
         """
-        from platform.mac_mouse_remap import MacOSMouseRemapper
+        from platform_layer.mac_mouse_remap import MacOSMouseRemapper
         screen_w, screen_h = self.get_screen_size()
         return MacOSMouseRemapper(split_screen, screen_w, screen_h)

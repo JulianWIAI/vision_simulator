@@ -38,7 +38,7 @@ import threading
 import time
 from typing import List, Optional, Tuple
 
-from platform import get_platform
+from platform_layer import get_platform
 
 
 # How long (seconds) the cached window list is considered fresh.

@@ -42,7 +42,7 @@ import ctypes.wintypes
 import threading
 from typing import Optional
 
-from platform.base import AbstractMouseRemapper
+from platform_layer.base import AbstractMouseRemapper
 
 
 # ── Win32 hook & message constants ─────────────────────────────────────────────

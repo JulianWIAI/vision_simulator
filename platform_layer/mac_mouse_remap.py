@@ -48,7 +48,7 @@ from __future__ import annotations
 import threading
 from typing import Optional, Tuple
 
-from platform.base import AbstractMouseRemapper
+from platform_layer.base import AbstractMouseRemapper
 
 # Quartz is required; if absent the remapper starts but does nothing.
 try:

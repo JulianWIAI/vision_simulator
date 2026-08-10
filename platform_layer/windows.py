@@ -31,7 +31,7 @@ import ctypes
 import ctypes.wintypes
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
-from platform.base import AbstractPlatform, AbstractMouseRemapper
+from platform_layer.base import AbstractPlatform, AbstractMouseRemapper
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
@@ -270,6 +270,6 @@ class WindowsPlatform(AbstractPlatform):
         The screen size is queried here (once) and passed to the remapper so
         the constructor does not need to call Win32 APIs itself.
         """
-        from platform.win_mouse_remap import WindowsMouseRemapper
+        from platform_layer.win_mouse_remap import WindowsMouseRemapper
         screen_w, screen_h = self.get_screen_size()
         return WindowsMouseRemapper(split_screen, screen_w, screen_h)

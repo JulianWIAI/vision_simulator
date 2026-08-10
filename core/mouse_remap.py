@@ -34,7 +34,7 @@ Usage (unchanged from before the refactor)
     app.aboutToQuit.connect(remapper.stop)   # clean teardown on exit
 """
 
-from platform import get_platform
+from platform_layer import get_platform
 
 # Ask the platform factory for the correct remapper class, then expose it
 # under the canonical name so all existing imports continue to work.
