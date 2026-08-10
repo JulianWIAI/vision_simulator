@@ -1,6 +1,6 @@
 # Vision Simulator
 
-A real-time, fullscreen Windows screen-overlay application that renders live simulations of non-human and altered visual perception directly on top of the desktop — without interrupting click-through interaction with any underlying application.
+A real-time, fullscreen screen-overlay application that renders live simulations of non-human and altered visual perception directly on top of the desktop — without interrupting click-through interaction with any underlying application. Runs on **Windows** and **macOS**.
 
 Built with **PySide6 (Qt for Python)**, **OpenCV**, **mss**, and **NumPy**. Targets 60 FPS on a modern CPU with no GPU requirement and zero Python-level pixel loops.
 
@@ -19,8 +19,11 @@ Built with **PySide6 (Qt for Python)**, **OpenCV**, **mss**, and **NumPy**. Targ
 | **Window-tracked overlays** | Clip any overlay to a specific Win32 window; the clip rect follows as the window moves |
 | **Draw Region** | Click-drag to paint a free rectangle on screen — the filter applies only inside it; multiple regions supported |
 | **HD Matrix Analyzer** | Spatial curvature analysis, SUSY symmetry lines, gravitational aura, and instability border |
-| **Control Panel GUI** | Floating dark-theme sidebar panel for all settings (show/hide with `C`) |
+| **Mini HUD** | Compact floating control widget (bottom-centre) — drag to reposition; replaces all keyboard shortcuts |
+| **Control Panel GUI** | Floating dark-theme sidebar panel for all settings; toggled from the Mini HUD |
+| **Per-overlay visibility toggle** | Eye button in the Mini HUD hides/shows each overlay independently; toggling re-raises the overlay to the front |
 | **Capture exclusion** | Overlay is hidden from MSS / BitBlt so it never feeds back into its own capture |
+| **Cross-platform** | Windows and macOS; all OS-specific calls isolated in `platform_layer/` |
 
 ---
 
@@ -28,7 +31,7 @@ Built with **PySide6 (Qt for Python)**, **OpenCV**, **mss**, and **NumPy**. Targ
 
 | Item | Minimum |
 |---|---|
-| OS | Windows 10 version 2004 (build 19041) or later |
+| OS | Windows 10 (build 19041) or later · macOS 12 Monterey or later |
 | Python | 3.10+ |
 | CPU | Any modern x86-64 |
 | RAM | 512 MB free |
@@ -68,8 +71,8 @@ python main.py
 | `numpy` | ≥ 1.24 | All per-pixel array math — zero Python-level pixel loops |
 | `mss` | ≥ 9.0 | Fast real-time screen capture at physical pixels |
 | `Pillow` | ≥ 10.0 | Asset loading (LUT images, textures) |
-| `keyboard` | ≥ 0.13 | System-wide hotkeys — work without window focus |
-| `PySide6` | ≥ 6.6 | Qt for Python — overlay window, control panel, signal/slot threading |
+| `PySide6` | ≥ 6.6 | Qt for Python — overlay window, control panel, Mini HUD, signal/slot threading |
+| `pyobjc-framework-Quartz` | ≥ 9.0 | macOS only (optional) — window enumeration and mouse event tap |
 
 ---
 
@@ -84,26 +87,33 @@ Double-click `run.bat` in the project folder. Windows may show a SmartScreen pro
 python main.py
 ```
 
-The terminal prints the full mode list and hotkey map. One overlay starts immediately in **mode 1** covering the primary screen. The **Control Panel** opens in the top-right corner.
-
-Press `C` to toggle the Control Panel at any time.  
-Press `°` (degree symbol) to quit, or close the Control Panel window.
+One overlay starts immediately in **mode 1** covering the primary screen. The **Control Panel** opens alongside the **Mini HUD** — a compact floating widget at the bottom-centre of your screen.
 
 ---
 
-## Keyboard Controls
+## Mini HUD
 
-| Key | Action |
+The Mini HUD is the primary control interface. It replaces all keyboard shortcuts so the simulator never interferes with typing in other applications.
+
+```
+╭──────────────────────────────────────────────────╮
+│ ⠿  ◀  [    Dog Vision    ▾]  ▶   ＋   ✕        │  ← mode row
+│    ◀      Overlay  1 / 2     ▶  👁  ⚙   ⏻      │  ← overlay row
+╰──────────────────────────────────────────────────╯
+```
+
+| Control | Action |
 |---|---|
-| `N` | Add a new overlay |
-| `M` | Cycle the last overlay forward through all 21 modes |
-| `1` – `9` | Set mode 1–9 on the last overlay |
-| `0` | Set mode 10 on the last overlay |
-| `X` | Remove the last overlay |
-| `C` | Toggle the Control Panel window |
-| `°` | First press: disable split-screen. Second press (or when no split is active): quit |
+| **◀ / ▶** (top row) | Step to the previous / next vision mode on the selected overlay |
+| **[Mode Name ▾]** | Open a scrollable popup of all 21 modes — click any to switch instantly |
+| **＋** | Add a new fullscreen overlay |
+| **✕** | Remove the currently selected overlay |
+| **◀ / ▶** (bottom row) | Select which overlay to control (when multiple exist) |
+| **👁** | Toggle visibility of the selected overlay; re-showing brings it to the front |
+| **⚙** | Show / hide the full Control Panel window |
+| **⏻** | Quit the application |
 
-> `N`, `M`, `X`, `1–9`, `0` are suppressed while the Control Panel has OS focus so typing in combo boxes does not fire overlay actions.
+Drag anywhere on the HUD background to reposition it. Position is clamped to screen bounds.
 
 ---
 
@@ -174,7 +184,7 @@ Analysis runs on a max-320-px downscale every 6 frames and the result is cached 
 
 ### Pipeline Persistence on Mode Switch
 
-When a `VisionPipeline` is active, pressing `M` or a digit key swaps only the **base mode** — the effect chain is **preserved**. The HUD shows `≡` instead of a numeric counter to indicate a pipeline is active. This is implemented in `core/pipeline_state.py` via in-place patching of `VisionPipeline.base_mode`.
+When a `VisionPipeline` is active, using the Mini HUD ◀/▶ to cycle modes swaps only the **base mode** — the effect chain is **preserved**. The HUD shows `≡` instead of a numeric counter to indicate a pipeline is active. This is implemented in `core/pipeline_state.py` via in-place patching of `VisionPipeline.base_mode`.
 
 ---
 
@@ -206,7 +216,7 @@ Open the **Split Screen** tab in the Control Panel to select a layout and assign
 | Left / Right | A (left) + B (right) | ≈50% width × full height each |
 | 2×2 Grid | A (TL), B (TR), C (BL), D (BR) | ≈50% width × ≈50% height each |
 
-Press `°` once to disable split-screen without quitting the application.
+Use the **⏻** button in the Mini HUD to quit. To disable split-screen without quitting, set the layout to **Off** in the Control Panel's Split Screen tab.
 
 ### Performance Model
 
@@ -241,17 +251,17 @@ The hook then moves the system cursor to `(real_x, real_y)` via `SetCursorPos`, 
 ```
 vision_simulator/
 │
-├── main.py                      Entry point · hotkeys · startup/shutdown sequence
+├── main.py                      Entry point · MiniHUD · startup/shutdown sequence
 │
 ├── core/
 │   ├── engine.py                VisionEngine — opens the MSS screen-capture context
 │   ├── frame_worker.py          FrameWorker (QThread) — capture loop → distribute()
 │   ├── overlay_manager.py       Owns the OverlayWindow list · frame distribution · HUD rendering
-│   ├── overlay_window.py        Fullscreen click-through QWidget + Win32 extended-style hardening
+│   ├── overlay_window.py        Fullscreen click-through QWidget; platform hardening via platform_layer
 │   ├── split_screen_manager.py  Panel composition engine — 4 layout modes
 │   ├── vision_pipeline.py       VisionPipeline — chains base_mode → effect(s) sequentially
 │   ├── pipeline_state.py        Stateless helpers for pipeline-safe mode switching
-│   └── mouse_remap.py           SplitScreenMouseRemapper — WH_MOUSE_LL click coordinate fix
+│   └── mouse_remap.py           SplitScreenMouseRemapper facade → platform_layer click-remap
 │
 ├── modes/
 │   ├── base_mode.py             BaseVisionMode abstract base class
@@ -264,22 +274,31 @@ vision_simulator/
 │   ├── hd_matrix_analyzer.py    HyperdimensionalMatrixEffect + _HDEngine analysis engine
 │   └── pipeline_effects.py      PIPELINE_EFFECTS ordered registry · BaseVisionMode wrappers
 │
+├── platform_layer/
+│   ├── __init__.py              get_platform() factory — returns singleton AbstractPlatform
+│   ├── base.py                  AbstractPlatform + AbstractMouseRemapper (shared coord maths)
+│   ├── windows.py               WindowsPlatform — all Win32 ctypes calls
+│   ├── macos.py                 MacOSPlatform — ObjC runtime + optional pyobjc
+│   ├── win_mouse_remap.py       WindowsMouseRemapper — WH_MOUSE_LL hook thread
+│   └── mac_mouse_remap.py       MacOSMouseRemapper — CGEventTap + CFRunLoop thread
+│
 ├── ui/
 │   ├── main_window.py           ControlPanel (QMainWindow) — 5-tab sidebar interface
+│   ├── mini_hud.py              MiniHUD — floating draggable overlay-control widget
 │   └── region_drawer.py         RegionDrawer — full-screen drag-to-draw region selector
 │
 └── utils/
     ├── config.py                Global constants (HUD font, capture settings, colours)
     ├── image_utils.py           frame_to_qimage() — OpenCV BGR → Qt QImage (zero-copy path)
     ├── mode_registry.py         get_all_modes() — single authoritative ordered mode list
-    └── window_manager.py        Win32 window enumeration and clip-rect tracking
+    └── window_manager.py        Cross-platform window enumeration and clip-rect tracking
 ```
 
 ### Multi-Threaded Frame Pipeline
 
 ```
 OS mouse-hook thread  (SplitScreenMouseRemapper._pump_thread)
-  └── WH_MOUSE_LL callback — pure Win32; no Qt calls; GIL released in GetMessageW
+  └── Win32 WH_MOUSE_LL / macOS CGEventTap callback — no Qt calls; GIL released during wait
 
 Main thread  (Qt event loop)
   ├── ControlPanel slots         — all GUI interactions
@@ -307,9 +326,11 @@ FrameWorker thread  (QThread)
 
 **Cross-thread safety:** all mode switches are single attribute assignments under CPython's GIL (atomic). An explicit `threading.Lock` protects only the `_overlays` list in `OverlayManager` against concurrent add/remove and distribute iteration.
 
-### Win32 Overlay Hardening
+### Platform Overlay Hardening
 
-`OverlayWindow._apply_win32_clickthrough()` writes these extended styles via `SetWindowLongW` after every `showEvent()`:
+All OS-specific hardening is isolated in `platform_layer/` and applied via `get_platform().apply_overlay_styles(widget)` inside `OverlayWindow.showEvent()`. `OverlayWindow` itself contains no OS-specific code.
+
+**Windows** (`platform_layer/windows.py`) — applied via `SetWindowLongW` + `SetWindowPos(SWP_FRAMECHANGED)`:
 
 | Flag | Hex | Effect |
 |---|---|---|
@@ -319,9 +340,9 @@ FrameWorker thread  (QThread)
 | `WS_EX_NOACTIVATE` | `0x08000000` | Prevents overlay from stealing keyboard focus |
 | `~WS_EX_APPWINDOW` | cleared | Ensures no ghost taskbar entry appears |
 
-`SetWindowPos` with `SWP_FRAMECHANGED` flushes all style changes synchronously without moving or resizing the window.
-
 `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAP)` hides the overlay from all capture APIs (MSS, BitBlt, OBS) to prevent recursive visual feedback.
+
+**macOS** (`platform_layer/macos.py`) — Qt window flags (`WindowTransparentForInput`, `Tool`, `WA_TranslucentBackground`) handle click-through and Dock hiding. `NSWindow.setSharingType_(NSWindowSharingNone)` excludes the overlay from screen recording and MSS capture.
 
 ---
 
@@ -359,7 +380,7 @@ def get_all_modes():
     ]
 ```
 
-The new mode appears automatically in the HUD counter, all combo boxes, the split-screen panel selectors, and is reachable via `M`-cycling. If its index is ≤ 9, it also gets a digit hotkey.
+The new mode appears automatically in the Mini HUD mode menu, all Control Panel combo boxes, and the split-screen panel selectors. No other file changes are needed.
 
 ### Adding a New Pipeline Effect
 
@@ -416,7 +437,7 @@ The effect appears immediately in the Control Panel's **Apply Pipeline Effect** 
 
 ---
 
-*Built with Python 3.10+ · PySide6 · OpenCV · NumPy · MSS · keyboard*
+*Built with Python 3.10+ · PySide6 · OpenCV · NumPy · MSS*
 
 ---
 
