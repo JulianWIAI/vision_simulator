@@ -84,6 +84,8 @@ class OverlayManager(QObject):
         self._split_screen = SplitScreenManager()
         # Tracks overlay IDs hidden because their tracked window was minimized
         self._minimized_overlay_ids: set = set()
+        # Tracks overlay IDs the user manually hid via the MiniHUD eye button
+        self._user_hidden_overlay_ids: set = set()
 
     # ── Properties ────────────────────────────────────────────────────────
 
@@ -181,6 +183,7 @@ class OverlayManager(QObject):
                 return
             overlay = self._overlays.pop()
 
+        self._user_hidden_overlay_ids.discard(overlay.overlay_id)
         overlay.hide()
         self.overlays_changed.emit()
         print(f"  - Overlay {overlay.overlay_id + 1} removed")
@@ -223,7 +226,7 @@ class OverlayManager(QObject):
 
     def show_all(self) -> None:
         """
-        Re-shows every active overlay.
+        Re-shows every active overlay that has not been manually hidden by the user.
 
         Counterpart to hide_all(), used by the Settings view visibility toggle.
         Must be called from the GUI thread.
@@ -231,7 +234,34 @@ class OverlayManager(QObject):
         with self._lock:
             snapshot = list(self._overlays)
         for overlay in snapshot:
-            overlay.show()
+            if overlay.overlay_id not in self._user_hidden_overlay_ids:
+                overlay.show()
+
+    def toggle_overlay_visibility(self, overlay_id: int) -> None:
+        """
+        Shows or hides a specific overlay based on the user's manual choice.
+
+        Tracks the hidden state in _user_hidden_overlay_ids so that show_all()
+        and sync_split_screen_windows() do not accidentally un-hide it.
+        Must be called from the GUI thread.
+
+        Args:
+            overlay_id: The numeric ID assigned at creation.
+        """
+        with self._lock:
+            target = next(
+                (ov for ov in self._overlays if ov.overlay_id == overlay_id),
+                None,
+            )
+        if target is None:
+            return
+        if overlay_id in self._user_hidden_overlay_ids:
+            self._user_hidden_overlay_ids.discard(overlay_id)
+            target.show()
+        else:
+            self._user_hidden_overlay_ids.add(overlay_id)
+            target.hide()
+        self.overlays_changed.emit()
 
     def sync_split_screen_windows(self) -> None:
         """
@@ -285,10 +315,11 @@ class OverlayManager(QObject):
                 extra_overlay.hide()            # remove from screen — does not destroy
         else:
             # ── Split-screen is inactive ────────────────────────────────────
-            # Restore every overlay to its normal visible state so each one
-            # independently renders and displays its own vision-mode frame.
-            for overlay in snapshot:            # every managed overlay
-                overlay.show()                  # make visible — triggers showEvent()
+            # Restore every overlay to its normal visible state, but respect
+            # overlays the user has manually hidden via the MiniHUD eye button.
+            for overlay in snapshot:
+                if overlay.overlay_id not in self._user_hidden_overlay_ids:
+                    overlay.show()
 
     def count(self) -> int:
         """Returns the number of currently active overlays."""
@@ -395,6 +426,7 @@ class OverlayManager(QObject):
                     break
 
         if target is not None:
+            self._user_hidden_overlay_ids.discard(target.overlay_id)
             target.hide()
             self.overlays_changed.emit()
             print(f"  - Overlay {target.overlay_id + 1} removed")
@@ -465,6 +497,8 @@ class OverlayManager(QObject):
                     "has_clip":     ov.clip_rect is not None,
                     # True when the overlay is a drawn region (clip rect set, no HWND)
                     "is_region":    ov.clip_rect is not None and ov.tracked_hwnd is None,
+                    # False when the user has manually hidden this overlay
+                    "visible":      ov.overlay_id not in self._user_hidden_overlay_ids,
                 }
                 for ov in self._overlays
             ]

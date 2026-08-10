@@ -204,6 +204,11 @@ class MiniHUD(QWidget):
         self._btn_next_ov.setToolTip("Next overlay")
         self._btn_next_ov.clicked.connect(self._next_overlay)
 
+        # Eye button: ● = overlay visible (click to hide), ○ = hidden (click to show)
+        self._btn_eye = _make_btn("●", size=10, min_w=22, min_h=22)
+        self._btn_eye.setToolTip("Hide this overlay")
+        self._btn_eye.clicked.connect(self._toggle_visibility)
+
         self._btn_settings = _make_btn("⚙", size=12, min_w=22, min_h=22)
         self._btn_settings.setToolTip("Toggle Control Panel")
         self._btn_settings.clicked.connect(self._toggle_panel)
@@ -219,6 +224,7 @@ class MiniHUD(QWidget):
         row2.addWidget(self._lbl_overlay)
         row2.addWidget(self._btn_next_ov)
         row2.addSpacing(6)
+        row2.addWidget(self._btn_eye)
         row2.addWidget(self._btn_settings)
         row2.addWidget(self._btn_quit)
 
@@ -388,6 +394,14 @@ class MiniHUD(QWidget):
             self._selected_id = ids[(idx + 1) % len(ids)]
         self._refresh_labels()
 
+    # ── Visibility toggle ──────────────────────────────────────────────────
+
+    def _toggle_visibility(self) -> None:
+        """Shows or hides the selected overlay; overlays_changed refreshes the eye button."""
+        if self._selected_id is None:
+            return
+        self._manager.toggle_overlay_visibility(self._selected_id)
+
     # ── Settings / quit ────────────────────────────────────────────────────
 
     def _toggle_panel(self) -> None:
@@ -455,6 +469,15 @@ class MiniHUD(QWidget):
         else:
             self._lbl_overlay.setText("No overlays")
 
+        # ── Eye button state ──────────────────────────────────────────────
+        if has and self._selected_id is not None:
+            info = next((i for i in infos if i["id"] == self._selected_id), None)
+            is_visible = info["visible"] if info else True
+            self._btn_eye.setText("●" if is_visible else "○")
+            self._btn_eye.setToolTip(
+                "Hide this overlay" if is_visible else "Show this overlay"
+            )
+
         # ── Button enabled states ─────────────────────────────────────────
         self._btn_prev_mode.setEnabled(has)
         self._btn_mode.setEnabled(has)
@@ -462,3 +485,4 @@ class MiniHUD(QWidget):
         self._btn_remove.setEnabled(has)
         self._btn_prev_ov.setEnabled(count > 1)
         self._btn_next_ov.setEnabled(count > 1)
+        self._btn_eye.setEnabled(has)
